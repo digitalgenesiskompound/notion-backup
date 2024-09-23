@@ -1,0 +1,4 @@
+notion-client
+python-dotenv
+boto3
+schedule

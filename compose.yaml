@@ -1,0 +1,28 @@
+---
+
+services:
+  notion-backup:
+    build:
+      context: .
+      args:
+        TIMEZONE: ${TIMEZONE}
+    container_name: notion-backup
+    restart: unless-stopped
+    environment:
+      - NOTION_API_TOKEN=${NOTION_API_TOKEN}
+      - EXPORT_PATH=${EXPORT_PATH}
+      - B2_KEY_ID=${B2_KEY_ID}
+      - B2_APPLICATION_KEY=${B2_APPLICATION_KEY}
+      - B2_BUCKET_NAME=${B2_BUCKET_NAME}
+      - B2_ENDPOINT_URL=${B2_ENDPOINT_URL}
+      - BACKUP_METHODS=${BACKUP_METHODS}
+      - BACKUP_INTERVAL=${BACKUP_INTERVAL}
+      - BACKUP_TIME=${BACKUP_TIME}
+      - TIMEZONE=${TIMEZONE}
+      # Optional: Set the timezone inside the container
+      # - TZ=${TIMEZONE}
+    volumes:
+      # Map the local export path to the container if using local backup
+      - ${EXPORT_PATH}:/backup
+
+      
