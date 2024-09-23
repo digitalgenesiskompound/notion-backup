@@ -1,25 +1,34 @@
 # Notion Backup Tool
 
-## Features
+### Features
 
-- Export all pages and databases from your Notion workspace to Markdown files.
+- Export all pages and databases from your Notion workspace to **Markdown files**.
 - Store backups locally, on Backblaze B2 cloud storage, or both.
 - Schedule backups at intervals you define (Hourly, Daily, Weekly, Monthly).
 - Customize the time of day backups run.
 - Dockerized for easy deployment on any system that supports Docker.
 
-## Prerequisites
+### Prerequisites
 
 - **Notion API Token**: You'll need an integration token from Notion to access your workspace.
 - **Backblaze B2 Account** (optional): If you wish to upload backups to Backblaze B2.
 - **Docker and Docker Compose**: For running the application in a containerized environment.
 
-## Installation
+# Installation
 
-### 1. Clone the Repository
+### 1. Setup Your Environment
+
+- Install [Docker](https://docs.docker.com/engine/install/) then:
 
 ```bash
-git clone https://github.com/digitalgenesiskompound/notion-backup.git
+sudo apt update && sudo apt upgrade
+sudo apt install git
+```
+
+### 2. Clone the Repository
+
+```bash
+sudo git clone https://github.com/digitalgenesiskompound/notion-backup.git
 cd notion-backup
 ```
 
@@ -80,9 +89,9 @@ BACKUP_INTERVAL=Daily
 BACKUP_TIME=00:00
 ```
 
-## Usage
+# Usage
 
-### Running with Docker Compose
+### Run with Docker Compose
 
 ### 1. Build and Start the Container
 
@@ -96,7 +105,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-This will follow the logs of the container, CTRL + C to following logs.
+This will follow the logs of the container, CTRL + C to stop following logs.
 
 ### 3. Success
 
