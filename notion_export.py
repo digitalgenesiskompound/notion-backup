@@ -15,8 +15,9 @@ load_dotenv()
 
 # Get environment variables
 NOTION_API_TOKEN = os.getenv("NOTION_API_TOKEN")
-EXPORT_PATH = os.getenv("EXPORT_PATH")
+EXPORT_PATH = os.getenv("CONTAINER_EXPORT_PATH")
 BACKUP_METHODS = os.getenv("BACKUP_METHODS", "both").lower()
+HOST_EXPORT_PATH = os.getenv("HOST_EXPORT_PATH")
 
 # Backblaze B2 credentials
 B2_KEY_ID = os.getenv("B2_KEY_ID")
@@ -41,11 +42,11 @@ enable_local_backup = False
 enable_backblaze_backup = False
 
 if BACKUP_METHODS in ['local', 'both']:
-    if EXPORT_PATH:
+    if HOST_EXPORT_PATH:
         enable_local_backup = True
-        logger.info(f"Local backup enabled. Files will be saved to {EXPORT_PATH}")
+        logger.info(f"Local backup enabled. Files will be saved to {HOST_EXPORT_PATH}")
     else:
-        logger.warning("Local backup requested but EXPORT_PATH is not set.")
+        logger.warning("Local backup requested but HOST_EXPORT_PATH is not set.")
 
 if BACKUP_METHODS in ['backblaze', 'both']:
     if B2_KEY_ID and B2_APPLICATION_KEY and B2_BUCKET_NAME and B2_ENDPOINT_URL:

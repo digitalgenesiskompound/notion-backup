@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       - NOTION_API_TOKEN=${NOTION_API_TOKEN}
-      - EXPORT_PATH=${EXPORT_PATH}
+      - EXPORT_PATH=${CONTAINER_EXPORT_PATH}
       - B2_KEY_ID=${B2_KEY_ID}
       - B2_APPLICATION_KEY=${B2_APPLICATION_KEY}
       - B2_BUCKET_NAME=${B2_BUCKET_NAME}
@@ -19,10 +19,7 @@ services:
       - BACKUP_INTERVAL=${BACKUP_INTERVAL}
       - BACKUP_TIME=${BACKUP_TIME}
       - TIMEZONE=${TIMEZONE}
-      # Optional: Set the timezone inside the container
-      # - TZ=${TIMEZONE}
     volumes:
-      # Map the local export path to the container if using local backup
-      - ${EXPORT_PATH}:/backup
+      - ${HOST_EXPORT_PATH}:${CONTAINER_EXPORT_PATH}
 
       
