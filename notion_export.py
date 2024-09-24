@@ -493,10 +493,29 @@ def main_backup():
         logger.warning("No pages or databases found.")
 
 def schedule_backup():
-    # For testing purposes, run backup every minute
-    schedule.every(1).minutes.do(main_backup)
-    logger.info("Backup scheduled to run every minute for testing.")
-
+    interval = os.getenv("BACKUP_INTERVAL", "Daily").lower()
+    backup_time = os.getenv("BACKUP_TIME", "00:00")
+    try:
+        # Validate backup_time format
+        time.strptime(backup_time, "%H:%M")
+    except ValueError:
+        logger.error(f"Invalid BACKUP_TIME format: {backup_time}. Expected HH:MM in 24-hour format.")
+        exit(1)
+    if interval == 'hourly':
+        schedule.every().hour.at(f":{backup_time.split(':')[1]}").do(main_backup)
+        logger.info(f"Backup scheduled to run every hour at minute {backup_time.split(':')[1]}.")
+    elif interval == 'daily':
+        schedule.every().day.at(backup_time).do(main_backup)
+        logger.info(f"Backup scheduled to run daily at {backup_time}.")
+    elif interval == 'weekly':
+        schedule.every().monday.at(backup_time).do(main_backup)
+        logger.info(f"Backup scheduled to run every week on Monday at {backup_time}.")
+    elif interval == 'monthly':
+        schedule.every(28).days.at(backup_time).do(main_backup)
+        logger.info(f"Backup scheduled to run every 28 days at {backup_time}.")
+    else:
+        logger.error(f"Invalid BACKUP_INTERVAL: {interval}. Defaulting to daily backup.")
+        schedule.every().day.at(backup_time).do(main_backup)
 
 
 if __name__ == "__main__":
