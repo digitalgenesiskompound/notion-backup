@@ -6,6 +6,7 @@ import schedule
 import time
 import csv
 import io
+import json
 from notion_client import Client
 from dotenv import load_dotenv
 
