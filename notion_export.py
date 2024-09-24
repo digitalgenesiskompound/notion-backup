@@ -4,6 +4,8 @@ import logging
 import boto3
 import schedule
 import time
+import csv
+import io
 from notion_client import Client
 from dotenv import load_dotenv
 
@@ -224,6 +226,11 @@ def process_block(block):
             if block.get("has_children"):
                 child_markdown = blocks_to_markdown(block.get("children", []))
                 markdown_content += child_markdown
+        elif block_type == "child_database":
+            database_id = block.get("id")
+            child_database = notion.databases.retrieve(database_id)
+            child_title = child_database.get("title", [{}])[0].get("plain_text", "Untitled")
+            markdown_content += f"### Child Database: {child_title}\n\n"
         else:
             logger.warning(f"Unsupported block type: {block_type}")
     except Exception as e:
@@ -244,7 +251,7 @@ def page_to_markdown(page):
         blocks = retrieve_all_blocks(page_id)
         markdown_content = blocks_to_markdown(blocks)
     except Exception as e:
-        logger.error(f"Error converting page to Markdown: {e}")
+        logger.error(f"Error converting page {page_id} to Markdown: {e}")
     return markdown_content
 
 def get_page_title(page):
@@ -276,45 +283,204 @@ def upload_to_backblaze(content, file_name):
     except Exception as e:
         logger.error(f"Error uploading {file_name} to Backblaze B2: {e}")
 
-def export_pages(pages):
+def export_pages(items):
     """
-    Export the pages to .md files locally and/or upload to Backblaze B2.
+    Export the pages and databases to files locally and/or upload to Backblaze B2.
     """
     try:
-        total_pages = len(pages)
-        logger.info(f"Starting export of {total_pages} pages...")
+        total_items = len(items)
+        logger.info(f"Starting export of {total_items} items...")
 
         if enable_local_backup and not os.path.exists(EXPORT_PATH):
             os.makedirs(EXPORT_PATH)
 
-        for idx, page in enumerate(pages, start=1):
+        for idx, item in enumerate(items, start=1):
             # Handle both pages and databases
-            page_title = "Untitled"
-            if page['object'] == 'database':
-                page_title = page.get("title", [{}])[0].get("plain_text", "Untitled")
-            elif page['object'] == 'page':
-                page_title = get_page_title(page)
+            item_title = "Untitled"
+            content = ''
+            file_name = ''
 
-            sanitized_title = sanitize_filename(page_title)
-            file_name = f"{sanitized_title.replace(' ', '_')}.md"
+            if item['object'] == 'database':
+                item_title = item.get("title", [{}])[0].get("plain_text", "Untitled")
+                sanitized_title = sanitize_filename(item_title)
+                file_name = f"{sanitized_title.replace(' ', '_')}.csv"
+                logger.info(f"Processing database {idx}/{total_items}: {item_title}")
 
-            logger.info(f"Processing page {idx}/{total_pages}: {page_title}")
+                # Export the database to CSV
+                content = export_database_to_csv(item)
+                if not content:
+                    logger.error(f"Failed to export database {item_title}")
+                    continue
 
-            markdown_content = page_to_markdown(page)
+                # Set up directory for databases and file path
+                if enable_local_backup:
+                    db_export_path = os.path.join(EXPORT_PATH, "databases")
+                    if not os.path.exists(db_export_path):
+                        os.makedirs(db_export_path)
+                    file_path = os.path.join(db_export_path, file_name)
+                else:
+                    file_path = None
 
-            if enable_local_backup:
-                file_path = os.path.join(EXPORT_PATH, file_name)
-                with open(file_path, 'w', encoding="utf-8") as f:
-                    f.write(markdown_content)
-                logger.info(f"Exported {page_title} to {file_path}")
+                # For Backblaze, adjust the object key to include the directory
+                backblaze_file_name = f"databases/{file_name}"
+
+            elif item['object'] == 'page':
+                item_title = get_page_title(item)
+                sanitized_title = sanitize_filename(item_title)
+                file_name = f"{sanitized_title.replace(' ', '_')}.md"
+                logger.info(f"Processing page {idx}/{total_items}: {item_title}")
+
+                # Export the page to Markdown
+                content = page_to_markdown(item)
+                if not content:
+                    logger.error(f"Failed to export page {item_title}")
+                    continue
+
+                # Set up directory for pages and file path
+                if enable_local_backup:
+                    page_export_path = os.path.join(EXPORT_PATH, "pages")
+                    if not os.path.exists(page_export_path):
+                        os.makedirs(page_export_path)
+                    file_path = os.path.join(page_export_path, file_name)
+                else:
+                    file_path = None
+
+                # For Backblaze, adjust the object key to include the directory
+                backblaze_file_name = f"pages/{file_name}"
+
+            else:
+                logger.warning(f"Unknown object type {item['object']}, skipping.")
+                continue
+
+            # Now, save or upload the content
+            if enable_local_backup and file_path:
+                with open(file_path, 'w', encoding="utf-8-sig", newline='') as f:
+                    f.write(content)
+                logger.info(f"Exported {item_title} to {file_path}")
 
             if enable_backblaze_backup:
-                upload_to_backblaze(markdown_content, file_name)
+                upload_to_backblaze(content, backblaze_file_name)
 
         logger.info("Export completed.")
 
     except Exception as e:
-        logger.error(f"Error exporting pages: {e}")
+        logger.error(f"Error exporting items: {e}")
+
+
+
+def export_database_to_csv(database):
+    try:
+        database_id = database['id']
+        all_entries = []
+
+        # Fetch all entries in the database
+        response = notion.databases.query(database_id=database_id, page_size=100)
+        all_entries.extend(response.get('results', []))
+
+        while response.get('has_more'):
+            response = notion.databases.query(
+                database_id=database_id,
+                start_cursor=response['next_cursor'],
+                page_size=100
+            )
+            all_entries.extend(response.get('results', []))
+
+        if not all_entries:
+            logger.warning(f"No entries found in database {database_id}")
+            return ''
+
+        # Get the property names (column names) from the database schema
+        properties = database.get('properties', {})
+        headers = list(properties.keys())
+
+        # Prepare CSV data
+        output = io.StringIO()
+        writer = csv.writer(output, delimiter=',', quoting=csv.QUOTE_ALL, lineterminator='\n')
+
+        # Write headers
+        writer.writerow(headers)
+
+        # Write rows
+        for entry in all_entries:
+            row = []
+            for header in headers:
+                prop = entry.get('properties', {}).get(header, {})
+                cell_value = extract_property_value(prop)
+                row.append(cell_value)
+            writer.writerow(row)
+
+        csv_content = output.getvalue()
+        output.close()
+        return csv_content
+
+    except Exception as e:
+        logger.error(f"Error exporting database to CSV: {e}")
+        return ''
+
+def extract_property_value(prop):
+    prop_type = prop.get('type')
+
+    if prop_type in ['title', 'rich_text']:
+        return get_rich_text(prop.get(prop_type, []))
+    elif prop_type == 'number':
+        return str(prop.get('number', ''))
+    elif prop_type == 'select':
+        select = prop.get('select', {})
+        return select.get('name', '')
+    elif prop_type == 'multi_select':
+        multi_select = prop.get('multi_select', [])
+        return ', '.join([item.get('name', '') for item in multi_select])
+    elif prop_type == 'date':
+        date = prop.get('date', {})
+        return date.get('start', '')
+    elif prop_type == 'checkbox':
+        return str(prop.get('checkbox', False))
+    elif prop_type in ['url', 'email', 'phone_number', 'created_time', 'last_edited_time']:
+        return prop.get(prop_type, '')
+    elif prop_type == 'people':
+        people = prop.get('people', [])
+        return ', '.join([person.get('name', '') for person in people])
+    elif prop_type == 'files':
+        files = prop.get('files', [])
+        file_urls = []
+        for file in files:
+            file_type = file.get('type')
+            file_data = file.get(file_type, {})
+            url = file_data.get('url', '')
+            file_urls.append(url)
+        return ', '.join(file_urls)
+    elif prop_type == 'formula':
+        formula = prop.get('formula', {})
+        formula_type = formula.get('type')
+        return str(formula.get(formula_type, ''))
+    elif prop_type == 'relation':
+        relations = prop.get('relation', [])
+        return ', '.join([rel.get('id', '') for rel in relations])
+    elif prop_type == 'rollup':
+        rollup = prop.get('rollup', {})
+        rollup_type = rollup.get('type')
+        if rollup_type == 'array':
+            array = rollup.get('array', [])
+            values = [extract_property_value(item) for item in array]
+            return ', '.join(values)
+        else:
+            return str(rollup.get(rollup_type, ''))
+    else:
+        # Log a warning for unknown property types
+        logger.warning(f"Unknown property type: {prop_type}")
+        # Attempt to extract value dynamically
+        value = prop.get(prop_type)
+        if isinstance(value, dict):
+            # Try to handle nested dictionaries
+            return str(value.get('name', '')) or str(value.get('start', '')) or json.dumps(value)
+        elif isinstance(value, list):
+            # If it's a list, attempt to extract text
+            return ', '.join([str(v) for v in value])
+        elif value is not None:
+            return str(value)
+        else:
+            return ''
+
 
 def main_backup():
     logger.info("Starting backup process...")
@@ -327,30 +493,10 @@ def main_backup():
         logger.warning("No pages or databases found.")
 
 def schedule_backup():
-    interval = os.getenv("BACKUP_INTERVAL", "Daily").lower()
-    backup_time = os.getenv("BACKUP_TIME", "00:00")
-    try:
-        # Validate backup_time format
-        time.strptime(backup_time, "%H:%M")
-    except ValueError:
-        logger.error(f"Invalid BACKUP_TIME format: {backup_time}. Expected HH:MM in 24-hour format.")
-        exit(1)
+    # For testing purposes, run backup every minute
+    schedule.every(1).minutes.do(main_backup)
+    logger.info("Backup scheduled to run every minute for testing.")
 
-    if interval == 'hourly':
-        schedule.every().hour.at(f":{backup_time.split(':')[1]}").do(main_backup)
-        logger.info(f"Backup scheduled to run every hour at minute {backup_time.split(':')[1]}.")
-    elif interval == 'daily':
-        schedule.every().day.at(backup_time).do(main_backup)
-        logger.info(f"Backup scheduled to run daily at {backup_time}.")
-    elif interval == 'weekly':
-        schedule.every().monday.at(backup_time).do(main_backup)
-        logger.info(f"Backup scheduled to run every week on Monday at {backup_time}.")
-    elif interval == 'monthly':
-        schedule.every(28).days.at(backup_time).do(main_backup)
-        logger.info(f"Backup scheduled to run every 28 days at {backup_time}.")
-    else:
-        logger.error(f"Invalid BACKUP_INTERVAL: {interval}. Defaulting to daily backup.")
-        schedule.every().day.at(backup_time).do(main_backup)
 
 
 if __name__ == "__main__":
