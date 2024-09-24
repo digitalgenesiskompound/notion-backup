@@ -2,7 +2,7 @@
 
 ### Features
 
-- Export all pages and databases from your Notion workspace to **Markdown files**.
+- Export all pages and databases from your Notion workspace to **Markdown files** and **CSV**.
 - Store backups locally, on Backblaze B2 cloud storage, or both.
 - Schedule backups at intervals you define (Hourly, Daily, Weekly, Monthly).
 - Customize the time of day backups run.
