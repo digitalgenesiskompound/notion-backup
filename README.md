@@ -62,6 +62,11 @@ mv .env.example .env
 
 - Open the `.env` file in a text editor and configure the following variables:
 
+Using Linux's Nano:
+```bash
+sudo nano .env
+```
+
 ```bash
 # Notion API Token
 NOTION_API_TOKEN=required
