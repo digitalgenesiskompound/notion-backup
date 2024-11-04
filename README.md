@@ -171,14 +171,6 @@ If you're using Backblaze B2 for cloud backups, ensure you have **ALL  of** the 
 ## Notes
 
 - **Timezones**: The application uses the timezone specified in the `TIMEZONE` variable to schedule backups at the correct local time.
-- **Docker Volumes**: If using local backups within Docker, ensure that the `EXPORT_PATH` is correctly mapped as a volume in the `docker-compose.yml` file.
-    
-    ```yaml
-    volumes:
-      - /path/on/host:/backup
-    ```
-    
-    Replace `/path/on/host` with the desired path on your host machine.
     
 - **Logging**: The application logs its activities. When running in Docker, you can view logs using `docker compose logs -f`.
 
