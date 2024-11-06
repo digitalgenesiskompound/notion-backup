@@ -12,6 +12,8 @@ import requests
 from notion_client import Client
 from dotenv import load_dotenv
 import traceback
+import functools
+from concurrent.futures import ThreadPoolExecutor
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -69,7 +71,20 @@ if not enable_local_backup and not enable_backblaze_backup:
     logger.error("No valid backup methods enabled. Please check your .env configuration.")
     exit(1)
 
+# Create a global ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
 
+def timing(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        logger.info(f"Function '{func.__name__}' executed in {end_time - start_time:.2f} seconds.")
+        return result
+    return wrapper
+
+@timing
 def fetch_notion_pages_and_databases():
     pages_and_databases = []
     try:
@@ -110,7 +125,6 @@ def fetch_notion_pages_and_databases():
     logger.info("Finished fetching pages and databases.")
     return pages_and_databases
 
-
 def retrieve_all_blocks(block_id):
     blocks = []
     try:
@@ -134,7 +148,6 @@ def retrieve_all_blocks(block_id):
         logger.error(f"Error retrieving blocks for block_id {block_id}: {e}")
 
     return blocks
-
 
 def get_rich_text(rich_text_array):
     text_content = ""
@@ -161,7 +174,6 @@ def get_rich_text(rich_text_array):
 
         text_content += plain_text
     return text_content
-
 
 def process_block(block, page_export_path):
     markdown_content = ""
@@ -230,13 +242,17 @@ def process_block(block, page_export_path):
             page_id = block.get("id")
             child_title = get_page_title(block)
             sanitized_title = sanitize_filename(child_title)
+            page_id_short = page_id.replace('-', '')[:8]
+            directory_name = f"{sanitized_title}_{page_id_short}"
             # Link to the child page file
-            markdown_content += f"[{child_title}]({sanitized_title}/{sanitized_title}.md)\n\n"
+            markdown_content += f"[{child_title}]({directory_name}/{sanitized_title.replace(' ', '_')}.md)\n\n"
         elif block_type == "child_database":
             database_id = block.get("id")
             child_database = notion.databases.retrieve(database_id)
             child_title = child_database.get("title", [{}])[0].get("plain_text", "Untitled")
             sanitized_title = sanitize_filename(child_title)
+            database_id_short = database_id.replace('-', '')[:8]
+            directory_name = f"{sanitized_title}_{database_id_short}"
             markdown_content += f"### Child Database: {child_title}\n\n"
 
             # Export the database to CSV
@@ -262,28 +278,19 @@ def process_block(block, page_export_path):
             caption = get_rich_text(block.get("image", {}).get("caption", []))
 
             if enable_local_backup and page_export_path is not None:
-                # Download the image
-                response = requests.get(image_url)
-                if response.status_code == 200:
-                    # Create an images directory within the page export path
-                    images_dir = os.path.join(page_export_path, "images")
-                    if not os.path.exists(images_dir):
-                        os.makedirs(images_dir)
-                    # Generate a filename for the image
-                    image_filename = os.path.join(images_dir, os.path.basename(image_url.split("?")[0]))
-                    # Save the image
-                    with open(image_filename, 'wb') as image_file:
-                        image_file.write(response.content)
-                    # Adjust the markdown to reference the local image file
-                    relative_path = os.path.relpath(image_filename, page_export_path)
-                    markdown_content += f"![{caption}]({relative_path})\n\n"
-                    logger.info(f"Saved image to {image_filename}")
-                else:
-                    logger.warning(f"Failed to download image from {image_url}")
-                    # Fallback to the original URL
-                    markdown_content += f"![{caption}]({image_url})\n\n"
+                # Create an images directory within the page export path
+                images_dir = os.path.join(page_export_path, "images")
+                if not os.path.exists(images_dir):
+                    os.makedirs(images_dir)
+                # Generate a filename for the image
+                image_filename = os.path.join(images_dir, os.path.basename(image_url.split("?")[0]))
+                # Schedule the image download
+                executor.submit(download_image, image_url, image_filename)
+                # Adjust the markdown to reference the local image file
+                relative_path = os.path.relpath(image_filename, page_export_path)
+                markdown_content += f"![{caption}]({relative_path})\n\n"
             else:
-                # If we can't save the image locally, use the image URL
+                # Use the image URL
                 markdown_content += f"![{caption}]({image_url})\n\n"
         elif block_type == "callout":
             text_content = get_rich_text(block.get("callout", {}).get("rich_text", []))
@@ -323,6 +330,17 @@ def process_block(block, page_export_path):
         traceback.print_exc()
     return markdown_content
 
+def download_image(image_url, image_filename):
+    try:
+        response = requests.get(image_url)
+        if response.status_code == 200:
+            with open(image_filename, 'wb') as image_file:
+                image_file.write(response.content)
+            logger.info(f"Saved image to {image_filename}")
+        else:
+            logger.warning(f"Failed to download image from {image_url}")
+    except Exception as e:
+        logger.error(f"Error downloading image {image_url}: {e}")
 
 def blocks_to_markdown(blocks, page_export_path):
     markdown_content = ""
@@ -330,7 +348,6 @@ def blocks_to_markdown(blocks, page_export_path):
         content = process_block(block, page_export_path)
         markdown_content += content
     return markdown_content
-
 
 def page_to_markdown(page, page_export_path):
     markdown_content = ""
@@ -342,7 +359,6 @@ def page_to_markdown(page, page_export_path):
         logger.error(f"Error converting page {page_id} to Markdown: {e}")
         traceback.print_exc()
     return markdown_content
-
 
 def get_page_title(page):
     try:
@@ -364,12 +380,10 @@ def get_page_title(page):
         traceback.print_exc()
         return "Untitled"
 
-
 def sanitize_filename(filename):
     # Remove Markdown formatting and invalid filename characters
     filename = re.sub(r'[*_~`<>:"/\\|?*]', '', filename)
     return filename.strip()
-
 
 def upload_to_backblaze(content, file_name):
     try:
@@ -377,7 +391,6 @@ def upload_to_backblaze(content, file_name):
         logger.info(f"Uploaded {file_name} to Backblaze B2 bucket {B2_BUCKET_NAME}")
     except Exception as e:
         logger.error(f"Error uploading {file_name} to Backblaze B2: {e}")
-
 
 def get_child_pages(page_id):
     child_pages = []
@@ -392,7 +405,7 @@ def get_child_pages(page_id):
         logger.error(f"Error fetching child pages for page {page_id}: {e}")
     return child_pages
 
-
+@timing
 def export_pages(items, parent_path=""):
     try:
         total_items = len(items)
@@ -409,14 +422,17 @@ def export_pages(items, parent_path=""):
             if item['object'] == 'database':
                 item_title = item.get("title", [{}])[0].get("plain_text", "Untitled")
                 sanitized_title = sanitize_filename(item_title)
+                # Append database ID to avoid conflicts
+                database_id_short = item['id'].replace('-', '')[:8]
+                directory_name = f"{sanitized_title}_{database_id_short}"
                 file_name = f"{sanitized_title.replace(' ', '_')}.csv"
                 logger.info(f"Processing database {idx}/{total_items}: {item_title}")
 
                 # Set up directory for the database
                 if parent_path:
-                    db_export_path = os.path.join(parent_path, sanitized_title)
+                    db_export_path = os.path.join(parent_path, directory_name)
                 else:
-                    db_export_path = os.path.join(EXPORT_PATH, "pages", sanitized_title)
+                    db_export_path = os.path.join(EXPORT_PATH, "pages", directory_name)
 
                 if enable_local_backup:
                     if not os.path.exists(db_export_path):
@@ -450,14 +466,17 @@ def export_pages(items, parent_path=""):
             elif item['object'] == 'page':
                 item_title = get_page_title(item)
                 sanitized_title = sanitize_filename(item_title)
+                # Append page ID to avoid conflicts
+                page_id_short = item['id'].replace('-', '')[:8]
+                directory_name = f"{sanitized_title}_{page_id_short}"
                 file_name = f"{sanitized_title.replace(' ', '_')}.md"
                 logger.info(f"Processing page {idx}/{total_items}: {item_title}")
 
                 # Set up directory for the page based on hierarchy
                 if parent_path:
-                    page_export_path = os.path.join(parent_path, sanitized_title)
+                    page_export_path = os.path.join(parent_path, directory_name)
                 else:
-                    page_export_path = os.path.join(EXPORT_PATH, "pages", sanitized_title)
+                    page_export_path = os.path.join(EXPORT_PATH, "pages", directory_name)
 
                 if enable_local_backup:
                     if not os.path.exists(page_export_path):
@@ -494,7 +513,25 @@ def export_pages(items, parent_path=""):
         logger.error(f"Error exporting items: {e}")
         traceback.print_exc()
 
+def get_database_entries(database_id):
+    entries = []
+    try:
+        response = notion.databases.query(database_id=database_id, page_size=100)
+        entries.extend(response.get('results', []))
 
+        while response.get('has_more'):
+            response = notion.databases.query(
+                database_id=database_id,
+                start_cursor=response['next_cursor'],
+                page_size=100
+            )
+            entries.extend(response.get('results', []))
+    except Exception as e:
+        logger.error(f"Error fetching entries for database {database_id}: {e}")
+
+    return entries
+
+@timing
 def export_database_to_csv(database):
     try:
         database_id = database['id']
@@ -544,7 +581,6 @@ def export_database_to_csv(database):
         logger.error(f"Error exporting database to CSV: {e}")
         traceback.print_exc()
         return ''
-
 
 def extract_property_value(prop):
     prop_type = prop.get('type')
@@ -617,7 +653,7 @@ def extract_property_value(prop):
         else:
             return ''
 
-
+@timing
 def main_backup():
     logger.info("Starting backup process...")
     pages = fetch_notion_pages_and_databases()
@@ -627,7 +663,6 @@ def main_backup():
         export_pages(pages)
     else:
         logger.warning("No pages or databases found.")
-
 
 def schedule_backup():
     interval = os.getenv("BACKUP_INTERVAL", "Daily").lower()
@@ -654,26 +689,6 @@ def schedule_backup():
         logger.error(f"Invalid BACKUP_INTERVAL: {interval}. Defaulting to daily backup.")
         schedule.every().day.at(backup_time).do(main_backup)
 
-def get_database_entries(database_id):
-    entries = []
-    try:
-        response = notion.databases.query(database_id=database_id, page_size=100)
-        entries.extend(response.get('results', []))
-
-        while response.get('has_more'):
-            response = notion.databases.query(
-                database_id=database_id,
-                start_cursor=response['next_cursor'],
-                page_size=100
-            )
-            entries.extend(response.get('results', []))
-    except Exception as e:
-        logger.error(f"Error fetching entries for database {database_id}: {e}")
-
-    return entries
-
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Notion Backup Script')
     parser.add_argument('--run-now', action='store_true', help='Run backup immediately')
@@ -681,6 +696,7 @@ if __name__ == "__main__":
 
     if args.run_now:
         main_backup()
+        executor.shutdown(wait=True)  # Wait for all image downloads to complete
     else:
         schedule_backup()
         logger.info("Scheduler initialized. Waiting for scheduled backups...")
