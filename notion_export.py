@@ -11,6 +11,7 @@ import json
 import requests
 from notion_client import Client
 from dotenv import load_dotenv
+import traceback
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -89,6 +90,7 @@ def fetch_notion_pages_and_databases():
     logger.info("Finished fetching pages and databases.")
     return pages_and_databases
 
+
 def retrieve_all_blocks(block_id):
     blocks = []
     try:
@@ -112,6 +114,7 @@ def retrieve_all_blocks(block_id):
         logger.error(f"Error retrieving blocks for block_id {block_id}: {e}")
 
     return blocks
+
 
 def get_rich_text(rich_text_array):
     text_content = ""
@@ -138,6 +141,7 @@ def get_rich_text(rich_text_array):
 
         text_content += plain_text
     return text_content
+
 
 def process_block(block, page_export_path):
     markdown_content = ""
@@ -199,42 +203,36 @@ def process_block(block, page_export_path):
                 markdown_content += f"```{language}\n{text_content}\n```\n"
         elif block_type == "divider":
             markdown_content += "---\n\n"
-        # elif block_type == "image":
-        #     image_type = block.get("image", {}).get("type")
-        #     if image_type == "file":
-        #         image_url = block.get("image", {}).get("file", {}).get("url", "")
-        #     elif image_type == "external":
-        #         image_url = block.get("image", {}).get("external", {}).get("url", "")
-        #     caption = get_rich_text(block.get("image", {}).get("caption", []))
-        #     markdown_content += f"![{caption}]({image_url})\n\n"
         elif block_type == "bookmark":
             url = block.get("bookmark", {}).get("url", "")
             markdown_content += f"[Bookmark]({url})\n\n"
         elif block_type == "child_page":
             page_id = block.get("id")
-            child_page = notion.pages.retrieve(page_id)
-            child_title = get_page_title(child_page)
-            markdown_content += f"## {child_title}\n\n"
-            # Include content from the child page
-            child_blocks = retrieve_all_blocks(page_id)
-            child_content = blocks_to_markdown(child_blocks, page_export_path)
-            markdown_content += child_content
-        elif block_type == "column_list":
-            # Process each column
-            if block.get("has_children"):
-                for column in block.get("children", []):
-                    column_content = process_block(column, page_export_path)
-                    markdown_content += column_content
-        elif block_type == "column":
-            # Process blocks inside the column
-            if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
-                markdown_content += child_markdown
+            child_title = get_page_title(block)
+            sanitized_title = sanitize_filename(child_title)
+            # Link to the child page file
+            markdown_content += f"[{child_title}]({sanitized_title}/{sanitized_title}.md)\n\n"
         elif block_type == "child_database":
             database_id = block.get("id")
             child_database = notion.databases.retrieve(database_id)
             child_title = child_database.get("title", [{}])[0].get("plain_text", "Untitled")
+            sanitized_title = sanitize_filename(child_title)
             markdown_content += f"### Child Database: {child_title}\n\n"
+
+            # Export the database to CSV
+            csv_content = export_database_to_csv(child_database)
+            if csv_content:
+                # Save the CSV file in the page's directory
+                csv_file_name = f"{sanitized_title.replace(' ', '_')}.csv"
+                csv_file_path = os.path.join(page_export_path, csv_file_name)
+                with open(csv_file_path, 'w', encoding="utf-8-sig", newline='') as f:
+                    f.write(csv_content)
+                logger.info(f"Exported inline database {child_title} to {csv_file_path}")
+
+                # Add a link to the CSV file in the Markdown content
+                markdown_content += f"[View Database]({csv_file_name})\n\n"
+            else:
+                logger.error(f"Failed to export inline database {child_title}")
         elif block_type == "image":
             image_type = block.get("image", {}).get("type")
             if image_type == "file":
@@ -259,6 +257,7 @@ def process_block(block, page_export_path):
                     # Adjust the markdown to reference the local image file
                     relative_path = os.path.relpath(image_filename, page_export_path)
                     markdown_content += f"![{caption}]({relative_path})\n\n"
+                    logger.info(f"Saved image to {image_filename}")
                 else:
                     logger.warning(f"Failed to download image from {image_url}")
                     # Fallback to the original URL
@@ -266,11 +265,44 @@ def process_block(block, page_export_path):
             else:
                 # If we can't save the image locally, use the image URL
                 markdown_content += f"![{caption}]({image_url})\n\n"
+        elif block_type == "callout":
+            text_content = get_rich_text(block.get("callout", {}).get("rich_text", []))
+            icon = block.get("callout", {}).get("icon", {})
+            if icon:
+                if icon.get("type") == "emoji":
+                    emoji = icon.get("emoji", "")
+                    text_content = f"{emoji} {text_content}"
+            # Style callouts as blockquotes or custom format
+            markdown_content += f"> **Callout:** {text_content}\n\n"
+        elif block_type == "table":
+            table_id = block.get("id")
+            table_rows = retrieve_all_blocks(table_id)
+            if table_rows:
+                # Extract table data
+                table_data = []
+                for row in table_rows:
+                    if row.get('type') == 'table_row':
+                        cells = row.get('table_row', {}).get('cells', [])
+                        row_data = [get_rich_text(cell) for cell in cells]
+                        table_data.append(row_data)
+                # Save the table as CSV
+                csv_file_name = f"table_{table_id}.csv"
+                csv_file_path = os.path.join(page_export_path, csv_file_name)
+                with open(csv_file_path, 'w', encoding='utf-8-sig', newline='') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerows(table_data)
+                logger.info(f"Exported table to {csv_file_path}")
+                # Add a link to the CSV file in the Markdown content
+                markdown_content += f"[View Table]({csv_file_name})\n\n"
+            else:
+                logger.warning(f"No rows found for table {table_id}")
         else:
             logger.warning(f"Unsupported block type: {block_type}")
     except Exception as e:
         logger.error(f"Error processing block {block_type}: {e}")
+        traceback.print_exc()
     return markdown_content
+
 
 def blocks_to_markdown(blocks, page_export_path):
     markdown_content = ""
@@ -278,6 +310,7 @@ def blocks_to_markdown(blocks, page_export_path):
         content = process_block(block, page_export_path)
         markdown_content += content
     return markdown_content
+
 
 def page_to_markdown(page, page_export_path):
     markdown_content = ""
@@ -287,29 +320,36 @@ def page_to_markdown(page, page_export_path):
         markdown_content = blocks_to_markdown(blocks, page_export_path)
     except Exception as e:
         logger.error(f"Error converting page {page_id} to Markdown: {e}")
+        traceback.print_exc()
     return markdown_content
+
 
 def get_page_title(page):
     try:
-        # Get all properties
-        properties = page.get("properties", {})
-        # Loop through properties to find the title property
-        for prop_name, prop in properties.items():
-            if prop.get("type") == "title":
-                title_array = prop.get("title", [])
-                if title_array:
-                    title_text = get_rich_text(title_array)
-                    return title_text
+        if 'properties' in page:
+            properties = page.get("properties", {})
+            for prop_name, prop in properties.items():
+                if prop.get("type") == "title":
+                    title_array = prop.get("title", [])
+                    if title_array:
+                        title_text = get_rich_text(title_array)
+                        return title_text
+        elif 'child_page' in page:
+            title_text = page.get('child_page', {}).get('title', 'Untitled')
+            return title_text
         # If no title property found, return "Untitled"
         return "Untitled"
     except Exception as e:
         logger.error(f"Error getting page title: {e}")
+        traceback.print_exc()
         return "Untitled"
+
 
 def sanitize_filename(filename):
     # Remove Markdown formatting and invalid filename characters
     filename = re.sub(r'[*_~`<>:"/\\|?*]', '', filename)
     return filename.strip()
+
 
 def upload_to_backblaze(content, file_name):
     try:
@@ -318,7 +358,22 @@ def upload_to_backblaze(content, file_name):
     except Exception as e:
         logger.error(f"Error uploading {file_name} to Backblaze B2: {e}")
 
-def export_pages(items):
+
+def get_child_pages(page_id):
+    child_pages = []
+    try:
+        blocks = notion.blocks.children.list(block_id=page_id, page_size=100).get('results', [])
+        for block in blocks:
+            if block.get('type') == 'child_page':
+                child_page_id = block['id']
+                child_page = notion.pages.retrieve(child_page_id)
+                child_pages.append(child_page)
+    except Exception as e:
+        logger.error(f"Error fetching child pages for page {page_id}: {e}")
+    return child_pages
+
+
+def export_pages(items, parent_path=""):
     """
     Export the pages and databases to files locally and/or upload to Backblaze B2.
     """
@@ -349,7 +404,10 @@ def export_pages(items):
 
                 # Set up directory for databases and file path
                 if enable_local_backup:
-                    db_export_path = os.path.join(EXPORT_PATH, "databases")
+                    if parent_path:
+                        db_export_path = parent_path
+                    else:
+                        db_export_path = os.path.join(EXPORT_PATH, "databases")
                     if not os.path.exists(db_export_path):
                         os.makedirs(db_export_path)
                     file_path = os.path.join(db_export_path, file_name)
@@ -357,7 +415,16 @@ def export_pages(items):
                     file_path = None
 
                 # For Backblaze, adjust the object key to include the directory
-                backblaze_file_name = f"databases/{file_name}"
+                backblaze_file_name = os.path.join(db_export_path, file_name)
+
+                # Save or upload the content
+                if enable_local_backup and file_path:
+                    with open(file_path, 'w', encoding="utf-8-sig", newline='') as f:
+                        f.write(content)
+                    logger.info(f"Exported {item_title} to {file_path}")
+
+                if enable_backblaze_backup:
+                    upload_to_backblaze(content, backblaze_file_name)
 
             elif item['object'] == 'page':
                 item_title = get_page_title(item)
@@ -365,8 +432,12 @@ def export_pages(items):
                 file_name = f"{sanitized_title.replace(' ', '_')}.md"
                 logger.info(f"Processing page {idx}/{total_items}: {item_title}")
 
-                # Set up directory for pages and file path
-                page_export_path = os.path.join(EXPORT_PATH, "pages")
+                # Set up directory for the page based on hierarchy
+                if parent_path:
+                    page_export_path = os.path.join(parent_path, sanitized_title)
+                else:
+                    page_export_path = os.path.join(EXPORT_PATH, "pages", sanitized_title)
+
                 if enable_local_backup:
                     if not os.path.exists(page_export_path):
                         os.makedirs(page_export_path)
@@ -381,7 +452,7 @@ def export_pages(items):
                     continue
 
                 # For Backblaze, adjust the object key to include the directory
-                backblaze_file_name = f"pages/{file_name}"
+                backblaze_file_name = os.path.join(page_export_path, file_name)
 
                 # Now, save or upload the content
                 if enable_local_backup and file_path:
@@ -392,11 +463,16 @@ def export_pages(items):
                 if enable_backblaze_backup:
                     upload_to_backblaze(content, backblaze_file_name)
 
+                # Recursively export child pages
+                child_pages = get_child_pages(item['id'])
+                if child_pages:
+                    export_pages(child_pages, parent_path=page_export_path)
+
         logger.info("Export completed.")
 
     except Exception as e:
         logger.error(f"Error exporting items: {e}")
-
+        traceback.print_exc()
 
 
 def export_database_to_csv(database):
@@ -446,7 +522,9 @@ def export_database_to_csv(database):
 
     except Exception as e:
         logger.error(f"Error exporting database to CSV: {e}")
+        traceback.print_exc()
         return ''
+
 
 def extract_property_value(prop):
     prop_type = prop.get('type')
@@ -496,6 +574,13 @@ def extract_property_value(prop):
             return ', '.join(values)
         else:
             return str(rollup.get(rollup_type, ''))
+    elif prop_type == 'status':
+        status = prop.get('status', {})
+        return status.get('name', '')
+    elif prop_type == 'button':
+        # Buttons don't have a straightforward representation in Markdown
+        # You can choose to include the button text or ignore it
+        return '[Button]'
     else:
         # Log a warning for unknown property types
         logger.warning(f"Unknown property type: {prop_type}")
@@ -522,6 +607,7 @@ def main_backup():
         export_pages(pages)
     else:
         logger.warning("No pages or databases found.")
+
 
 def schedule_backup():
     interval = os.getenv("BACKUP_INTERVAL", "Daily").lower()
@@ -562,5 +648,3 @@ if __name__ == "__main__":
         while True:
             schedule.run_pending()
             time.sleep(1)
-
-
