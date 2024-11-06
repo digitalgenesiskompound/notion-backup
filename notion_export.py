@@ -150,28 +150,28 @@ def process_block(block, page_export_path):
                 child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "heading_1":
-            text_content = get_rich_text(block.get("heading_1", {}).get("rich_text", []), page_export_path)
+            text_content = get_rich_text(block.get("heading_1", {}).get("rich_text", []))
             markdown_content += f"# {text_content}\n\n"
         elif block_type == "heading_2":
-            text_content = get_rich_text(block.get("heading_2", {}).get("rich_text", []), page_export_path)
+            text_content = get_rich_text(block.get("heading_2", {}).get("rich_text", []))
             markdown_content += f"## {text_content}\n\n"
         elif block_type == "heading_3":
-            text_content = get_rich_text(block.get("heading_3", {}).get("rich_text", []), page_export_path)
+            text_content = get_rich_text(block.get("heading_3", {}).get("rich_text", []))
             markdown_content += f"### {text_content}\n\n"
         elif block_type == "bulleted_list_item":
-            text_content = get_rich_text(block.get("bulleted_list_item", {}).get("rich_text", []), page_export_path)
+            text_content = get_rich_text(block.get("bulleted_list_item", {}).get("rich_text", []))
             markdown_content += f"- {text_content}\n"
             if block.get("has_children"):
                 child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "numbered_list_item":
-            text_content = get_rich_text(block.get("numbered_list_item", {}).get("rich_text", []), page_export_path)
+            text_content = get_rich_text(block.get("numbered_list_item", {}).get("rich_text", []))
             markdown_content += f"1. {text_content}\n"
             if block.get("has_children"):
                 child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "to_do":
-            text_content = get_rich_text(block.get("to_do", {}).get("rich_text", []), page_export_path)
+            text_content = get_rich_text(block.get("to_do", {}).get("rich_text", []))
             checked = block.get("to_do", {}).get("checked")
             checkbox = "[x]" if checked else "[ ]"
             markdown_content += f"{checkbox} {text_content}\n"
