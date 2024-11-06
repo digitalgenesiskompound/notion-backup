@@ -74,8 +74,8 @@ if not enable_local_backup and not enable_backblaze_backup:
 # Create a global ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
 
-# Global mapping of page IDs to their directory names
-page_id_to_dir_name = {}
+# Global mapping of page IDs to their directory paths
+page_id_to_dir_path = {}
 
 def timing(func):
     @functools.wraps(func)
@@ -108,41 +108,54 @@ def get_unique_file_name(directory_path, file_name):
 def fetch_notion_pages_and_databases():
     pages_and_databases = []
     try:
-        logger.info("Starting to fetch pages and databases...")
-        response = notion.search(page_size=100)  # Fetch up to 100 items per call
-        results = response.get("results", [])
-        # Filter out pages that are database entries
-        for item in results:
-            if item['object'] == 'page':
-                parent_type = item.get('parent', {}).get('type')
-                if parent_type == 'database_id':
-                    continue  # Skip pages that are database entries
-                else:
-                    pages_and_databases.append(item)
-            else:
-                pages_and_databases.append(item)
+        logger.info("Starting to fetch top-level pages and databases...")
 
-        logger.info(f"Fetched {len(pages_and_databases)} items.")
-
-        # If there are more pages (pagination)
-        while response.get("has_more"):
-            response = notion.search(start_cursor=response["next_cursor"], page_size=100)
+        # Fetch top-level pages
+        has_more = True
+        next_cursor = None
+        while has_more:
+            response = notion.search(
+                filter={"value": "page", "property": "object"},
+                start_cursor=next_cursor,
+                page_size=100
+            )
             results = response.get("results", [])
             for item in results:
-                if item['object'] == 'page':
-                    parent_type = item.get('parent', {}).get('type')
-                    if parent_type == 'database_id':
-                        continue  # Skip pages that are database entries
-                    else:
-                        pages_and_databases.append(item)
-                else:
+                parent = item.get('parent', {})
+                parent_type = parent.get('type')
+                if parent_type == 'workspace':
                     pages_and_databases.append(item)
-            logger.info(f"Fetched {len(pages_and_databases)} items so far...")
+                else:
+                    continue  # Skip pages that are not top-level
+            has_more = response.get('has_more', False)
+            next_cursor = response.get('next_cursor')
+            logger.info(f"Fetched {len(pages_and_databases)} top-level pages so far...")
+
+        # Fetch top-level databases
+        has_more = True
+        next_cursor = None
+        while has_more:
+            response = notion.search(
+                filter={"value": "database", "property": "object"},
+                start_cursor=next_cursor,
+                page_size=100
+            )
+            results = response.get("results", [])
+            for db in results:
+                parent = db.get('parent', {})
+                parent_type = parent.get('type')
+                if parent_type == 'workspace':
+                    pages_and_databases.append(db)
+                else:
+                    continue  # Skip databases that are not top-level
+            has_more = response.get('has_more', False)
+            next_cursor = response.get('next_cursor')
+            logger.info(f"Fetched {len(pages_and_databases)} top-level pages and databases so far...")
 
     except Exception as e:
         logger.error(f"Error fetching pages and databases: {e}")
 
-    logger.info("Finished fetching pages and databases.")
+    logger.info("Finished fetching top-level pages and databases.")
     return pages_and_databases
 
 def retrieve_all_blocks(block_id):
@@ -262,34 +275,29 @@ def process_block(block, page_export_path):
             page_id = block.get("id")
             child_title = get_page_title(block)
             sanitized_title = sanitize_filename(child_title)
-            # Get the directory name from the mapping
-            child_directory_name = page_id_to_dir_name.get(page_id, sanitized_title)
-            # Link to the child page file
-            child_file_name = f"{sanitized_title.replace(' ', '_')}.md"
-            markdown_content += f"[{child_title}]({child_directory_name}/{child_file_name})\n\n"
+            # Get the export path of the child page
+            child_page_export_path = page_id_to_dir_path.get(page_id)
+            if child_page_export_path:
+                relative_path = os.path.relpath(child_page_export_path, page_export_path)
+                link_path = os.path.join(relative_path, f"{sanitized_title.replace(' ', '_')}.md")
+            else:
+                # If not exported yet, assume default path
+                link_path = os.path.join(sanitized_title, f"{sanitized_title.replace(' ', '_')}.md")
+            markdown_content += f"[{child_title}]({link_path})\n\n"
         elif block_type == "child_database":
             database_id = block.get("id")
             child_database = notion.databases.retrieve(database_id)
             child_title = child_database.get("title", [{}])[0].get("plain_text", "Untitled")
             sanitized_title = sanitize_filename(child_title)
-            # Get the directory name from the mapping
-            child_directory_name = page_id_to_dir_name.get(database_id, sanitized_title)
-            markdown_content += f"### Child Database: {child_title}\n\n"
-
-            # Export the database to CSV
-            csv_content = export_database_to_csv(child_database)
-            if csv_content:
-                # Save the CSV file in the page's directory
-                csv_file_name = f"{sanitized_title.replace(' ', '_')}.csv"
-                csv_file_path = os.path.join(page_export_path, csv_file_name)
-                with open(csv_file_path, 'w', encoding="utf-8-sig", newline='') as f:
-                    f.write(csv_content)
-                logger.info(f"Exported inline database {child_title} to {csv_file_path}")
-
-                # Add a link to the CSV file in the Markdown content
-                markdown_content += f"[View Database]({csv_file_name})\n\n"
+            # Get the export path of the child database
+            child_db_export_path = page_id_to_dir_path.get(database_id)
+            if child_db_export_path:
+                relative_path = os.path.relpath(child_db_export_path, page_export_path)
+                link_path = os.path.join(relative_path, f"{sanitized_title.replace(' ', '_')}.csv")
             else:
-                logger.error(f"Failed to export inline database {child_title}")
+                # If not exported yet, assume default path
+                link_path = os.path.join(sanitized_title, f"{sanitized_title.replace(' ', '_')}.csv")
+            markdown_content += f"[{child_title} Database]({link_path})\n\n"
         elif block_type == "image":
             image_type = block.get("image", {}).get("type")
             if image_type == "file":
@@ -451,9 +459,9 @@ def export_pages(items, parent_path=""):
                     directory_name = get_unique_directory_name(os.path.join(EXPORT_PATH, "pages"), sanitized_title)
                     db_export_path = os.path.join(EXPORT_PATH, "pages", directory_name)
 
-                # Save the directory name in the mapping
+                # Save the directory path in the mapping
                 database_id = item['id']
-                page_id_to_dir_name[database_id] = directory_name
+                page_id_to_dir_path[database_id] = db_export_path
 
                 if enable_local_backup:
                     if not os.path.exists(db_export_path):
@@ -497,9 +505,9 @@ def export_pages(items, parent_path=""):
                     directory_name = get_unique_directory_name(os.path.join(EXPORT_PATH, "pages"), sanitized_title)
                     page_export_path = os.path.join(EXPORT_PATH, "pages", directory_name)
 
-                # Save the directory name in the mapping
+                # Save the directory path in the mapping
                 page_id = item['id']
-                page_id_to_dir_name[page_id] = directory_name
+                page_id_to_dir_path[page_id] = page_export_path
 
                 if enable_local_backup:
                     if not os.path.exists(page_export_path):
