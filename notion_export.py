@@ -75,13 +75,33 @@ def fetch_notion_pages_and_databases():
     try:
         logger.info("Starting to fetch pages and databases...")
         response = notion.search(page_size=100)  # Fetch up to 100 items per call
-        pages_and_databases.extend(response.get("results", []))
+        results = response.get("results", [])
+        # Filter out pages that are database entries
+        for item in results:
+            if item['object'] == 'page':
+                parent_type = item.get('parent', {}).get('type')
+                if parent_type == 'database_id':
+                    continue  # Skip pages that are database entries
+                else:
+                    pages_and_databases.append(item)
+            else:
+                pages_and_databases.append(item)
+
         logger.info(f"Fetched {len(pages_and_databases)} items.")
 
         # If there are more pages (pagination)
         while response.get("has_more"):
             response = notion.search(start_cursor=response["next_cursor"], page_size=100)
-            pages_and_databases.extend(response.get("results", []))
+            results = response.get("results", [])
+            for item in results:
+                if item['object'] == 'page':
+                    parent_type = item.get('parent', {}).get('type')
+                    if parent_type == 'database_id':
+                        continue  # Skip pages that are database entries
+                    else:
+                        pages_and_databases.append(item)
+                else:
+                    pages_and_databases.append(item)
             logger.info(f"Fetched {len(pages_and_databases)} items so far...")
 
     except Exception as e:
@@ -374,9 +394,6 @@ def get_child_pages(page_id):
 
 
 def export_pages(items, parent_path=""):
-    """
-    Export the pages and databases to files locally and/or upload to Backblaze B2.
-    """
     try:
         total_items = len(items)
         logger.info(f"Starting export of {total_items} items...")
@@ -385,7 +402,6 @@ def export_pages(items, parent_path=""):
             os.makedirs(EXPORT_PATH)
 
         for idx, item in enumerate(items, start=1):
-            # Handle both pages and databases
             item_title = "Untitled"
             content = ''
             file_name = ''
@@ -396,25 +412,25 @@ def export_pages(items, parent_path=""):
                 file_name = f"{sanitized_title.replace(' ', '_')}.csv"
                 logger.info(f"Processing database {idx}/{total_items}: {item_title}")
 
-                # Export the database to CSV
-                content = export_database_to_csv(item)
-                if not content:
-                    logger.error(f"Failed to export database {item_title}")
-                    continue
+                # Set up directory for the database
+                if parent_path:
+                    db_export_path = os.path.join(parent_path, sanitized_title)
+                else:
+                    db_export_path = os.path.join(EXPORT_PATH, "pages", sanitized_title)
 
-                # Set up directory for databases and file path
                 if enable_local_backup:
-                    if parent_path:
-                        db_export_path = parent_path
-                    else:
-                        db_export_path = os.path.join(EXPORT_PATH, "databases")
                     if not os.path.exists(db_export_path):
                         os.makedirs(db_export_path)
                     file_path = os.path.join(db_export_path, file_name)
                 else:
                     file_path = None
 
-                # For Backblaze, adjust the object key to include the directory
+                # Export the database to CSV
+                content = export_database_to_csv(item)
+                if not content:
+                    logger.error(f"Failed to export database {item_title}")
+                    continue
+
                 backblaze_file_name = os.path.join(db_export_path, file_name)
 
                 # Save or upload the content
@@ -425,6 +441,11 @@ def export_pages(items, parent_path=""):
 
                 if enable_backblaze_backup:
                     upload_to_backblaze(content, backblaze_file_name)
+
+                # Now, export the entries in the database
+                database_entries = get_database_entries(item['id'])
+                if database_entries:
+                    export_pages(database_entries, parent_path=db_export_path)
 
             elif item['object'] == 'page':
                 item_title = get_page_title(item)
@@ -451,7 +472,6 @@ def export_pages(items, parent_path=""):
                     logger.error(f"Failed to export page {item_title}")
                     continue
 
-                # For Backblaze, adjust the object key to include the directory
                 backblaze_file_name = os.path.join(page_export_path, file_name)
 
                 # Now, save or upload the content
@@ -633,6 +653,25 @@ def schedule_backup():
     else:
         logger.error(f"Invalid BACKUP_INTERVAL: {interval}. Defaulting to daily backup.")
         schedule.every().day.at(backup_time).do(main_backup)
+
+def get_database_entries(database_id):
+    entries = []
+    try:
+        response = notion.databases.query(database_id=database_id, page_size=100)
+        entries.extend(response.get('results', []))
+
+        while response.get('has_more'):
+            response = notion.databases.query(
+                database_id=database_id,
+                start_cursor=response['next_cursor'],
+                page_size=100
+            )
+            entries.extend(response.get('results', []))
+    except Exception as e:
+        logger.error(f"Error fetching entries for database {database_id}: {e}")
+
+    return entries
+
 
 
 if __name__ == "__main__":
