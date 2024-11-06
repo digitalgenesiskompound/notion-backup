@@ -74,6 +74,9 @@ if not enable_local_backup and not enable_backblaze_backup:
 # Create a global ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
 
+# Global mapping of page IDs to their directory names
+page_id_to_dir_name = {}
+
 def timing(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -83,6 +86,23 @@ def timing(func):
         logger.info(f"Function '{func.__name__}' executed in {end_time - start_time:.2f} seconds.")
         return result
     return wrapper
+
+def get_unique_directory_name(parent_path, name):
+    directory_name = name
+    count = 1
+    while os.path.exists(os.path.join(parent_path, directory_name)):
+        directory_name = f"{name} ({count})"
+        count +=1
+    return directory_name
+
+def get_unique_file_name(directory_path, file_name):
+    base_name, ext = os.path.splitext(file_name)
+    unique_name = file_name
+    count = 1
+    while os.path.exists(os.path.join(directory_path, unique_name)):
+        unique_name = f"{base_name} ({count}){ext}"
+        count +=1
+    return unique_name
 
 @timing
 def fetch_notion_pages_and_databases():
@@ -242,17 +262,18 @@ def process_block(block, page_export_path):
             page_id = block.get("id")
             child_title = get_page_title(block)
             sanitized_title = sanitize_filename(child_title)
-            page_id_short = page_id.replace('-', '')[:8]
-            directory_name = f"{sanitized_title}_{page_id_short}"
+            # Get the directory name from the mapping
+            child_directory_name = page_id_to_dir_name.get(page_id, sanitized_title)
             # Link to the child page file
-            markdown_content += f"[{child_title}]({directory_name}/{sanitized_title.replace(' ', '_')}.md)\n\n"
+            child_file_name = f"{sanitized_title.replace(' ', '_')}.md"
+            markdown_content += f"[{child_title}]({child_directory_name}/{child_file_name})\n\n"
         elif block_type == "child_database":
             database_id = block.get("id")
             child_database = notion.databases.retrieve(database_id)
             child_title = child_database.get("title", [{}])[0].get("plain_text", "Untitled")
             sanitized_title = sanitize_filename(child_title)
-            database_id_short = database_id.replace('-', '')[:8]
-            directory_name = f"{sanitized_title}_{database_id_short}"
+            # Get the directory name from the mapping
+            child_directory_name = page_id_to_dir_name.get(database_id, sanitized_title)
             markdown_content += f"### Child Database: {child_title}\n\n"
 
             # Export the database to CSV
@@ -422,24 +443,27 @@ def export_pages(items, parent_path=""):
             if item['object'] == 'database':
                 item_title = item.get("title", [{}])[0].get("plain_text", "Untitled")
                 sanitized_title = sanitize_filename(item_title)
-                # Append database ID to avoid conflicts
-                database_id_short = item['id'].replace('-', '')[:8]
-                directory_name = f"{sanitized_title}_{database_id_short}"
-                file_name = f"{sanitized_title.replace(' ', '_')}.csv"
-                logger.info(f"Processing database {idx}/{total_items}: {item_title}")
-
-                # Set up directory for the database
+                # Get unique directory name
                 if parent_path:
+                    directory_name = get_unique_directory_name(parent_path, sanitized_title)
                     db_export_path = os.path.join(parent_path, directory_name)
                 else:
+                    directory_name = get_unique_directory_name(os.path.join(EXPORT_PATH, "pages"), sanitized_title)
                     db_export_path = os.path.join(EXPORT_PATH, "pages", directory_name)
+
+                # Save the directory name in the mapping
+                database_id = item['id']
+                page_id_to_dir_name[database_id] = directory_name
 
                 if enable_local_backup:
                     if not os.path.exists(db_export_path):
                         os.makedirs(db_export_path)
+                    file_name = f"{sanitized_title.replace(' ', '_')}.csv"
                     file_path = os.path.join(db_export_path, file_name)
                 else:
                     file_path = None
+
+                logger.info(f"Processing database {idx}/{total_items}: {item_title}")
 
                 # Export the database to CSV
                 content = export_database_to_csv(item)
@@ -466,24 +490,26 @@ def export_pages(items, parent_path=""):
             elif item['object'] == 'page':
                 item_title = get_page_title(item)
                 sanitized_title = sanitize_filename(item_title)
-                # Append page ID to avoid conflicts
-                page_id_short = item['id'].replace('-', '')[:8]
-                directory_name = f"{sanitized_title}_{page_id_short}"
-                file_name = f"{sanitized_title.replace(' ', '_')}.md"
-                logger.info(f"Processing page {idx}/{total_items}: {item_title}")
-
-                # Set up directory for the page based on hierarchy
                 if parent_path:
+                    directory_name = get_unique_directory_name(parent_path, sanitized_title)
                     page_export_path = os.path.join(parent_path, directory_name)
                 else:
+                    directory_name = get_unique_directory_name(os.path.join(EXPORT_PATH, "pages"), sanitized_title)
                     page_export_path = os.path.join(EXPORT_PATH, "pages", directory_name)
+
+                # Save the directory name in the mapping
+                page_id = item['id']
+                page_id_to_dir_name[page_id] = directory_name
 
                 if enable_local_backup:
                     if not os.path.exists(page_export_path):
                         os.makedirs(page_export_path)
+                    file_name = get_unique_file_name(page_export_path, f"{sanitized_title.replace(' ', '_')}.md")
                     file_path = os.path.join(page_export_path, file_name)
                 else:
                     file_path = None
+
+                logger.info(f"Processing page {idx}/{total_items}: {item_title}")
 
                 # Export the page to Markdown
                 content = page_to_markdown(item, page_export_path)
