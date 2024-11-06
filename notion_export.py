@@ -6,7 +6,9 @@ import schedule
 import time
 import csv
 import io
+import argparse
 import json
+import requests
 from notion_client import Client
 from dotenv import load_dotenv
 
@@ -137,7 +139,7 @@ def get_rich_text(rich_text_array):
         text_content += plain_text
     return text_content
 
-def process_block(block):
+def process_block(block, page_export_path):
     markdown_content = ""
     block_type = block.get("type")
     try:
@@ -145,42 +147,42 @@ def process_block(block):
             text_content = get_rich_text(block.get("paragraph", {}).get("rich_text", []))
             markdown_content += f"{text_content}\n\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []))
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "heading_1":
-            text_content = get_rich_text(block.get("heading_1", {}).get("rich_text", []))
+            text_content = get_rich_text(block.get("heading_1", {}).get("rich_text", []), page_export_path)
             markdown_content += f"# {text_content}\n\n"
         elif block_type == "heading_2":
-            text_content = get_rich_text(block.get("heading_2", {}).get("rich_text", []))
+            text_content = get_rich_text(block.get("heading_2", {}).get("rich_text", []), page_export_path)
             markdown_content += f"## {text_content}\n\n"
         elif block_type == "heading_3":
-            text_content = get_rich_text(block.get("heading_3", {}).get("rich_text", []))
+            text_content = get_rich_text(block.get("heading_3", {}).get("rich_text", []), page_export_path)
             markdown_content += f"### {text_content}\n\n"
         elif block_type == "bulleted_list_item":
-            text_content = get_rich_text(block.get("bulleted_list_item", {}).get("rich_text", []))
+            text_content = get_rich_text(block.get("bulleted_list_item", {}).get("rich_text", []), page_export_path)
             markdown_content += f"- {text_content}\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []))
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "numbered_list_item":
-            text_content = get_rich_text(block.get("numbered_list_item", {}).get("rich_text", []))
+            text_content = get_rich_text(block.get("numbered_list_item", {}).get("rich_text", []), page_export_path)
             markdown_content += f"1. {text_content}\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []))
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "to_do":
-            text_content = get_rich_text(block.get("to_do", {}).get("rich_text", []))
+            text_content = get_rich_text(block.get("to_do", {}).get("rich_text", []), page_export_path)
             checked = block.get("to_do", {}).get("checked")
             checkbox = "[x]" if checked else "[ ]"
             markdown_content += f"{checkbox} {text_content}\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []))
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "toggle":
             text_content = get_rich_text(block.get("toggle", {}).get("rich_text", []))
             markdown_content += f"<details><summary>{text_content}</summary>\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []))
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
             markdown_content += "</details>\n"
         elif block_type == "quote":
@@ -197,14 +199,14 @@ def process_block(block):
                 markdown_content += f"```{language}\n{text_content}\n```\n"
         elif block_type == "divider":
             markdown_content += "---\n\n"
-        elif block_type == "image":
-            image_type = block.get("image", {}).get("type")
-            if image_type == "file":
-                image_url = block.get("image", {}).get("file", {}).get("url", "")
-            elif image_type == "external":
-                image_url = block.get("image", {}).get("external", {}).get("url", "")
-            caption = get_rich_text(block.get("image", {}).get("caption", []))
-            markdown_content += f"![{caption}]({image_url})\n\n"
+        # elif block_type == "image":
+        #     image_type = block.get("image", {}).get("type")
+        #     if image_type == "file":
+        #         image_url = block.get("image", {}).get("file", {}).get("url", "")
+        #     elif image_type == "external":
+        #         image_url = block.get("image", {}).get("external", {}).get("url", "")
+        #     caption = get_rich_text(block.get("image", {}).get("caption", []))
+        #     markdown_content += f"![{caption}]({image_url})\n\n"
         elif block_type == "bookmark":
             url = block.get("bookmark", {}).get("url", "")
             markdown_content += f"[Bookmark]({url})\n\n"
@@ -215,43 +217,74 @@ def process_block(block):
             markdown_content += f"## {child_title}\n\n"
             # Include content from the child page
             child_blocks = retrieve_all_blocks(page_id)
-            child_content = blocks_to_markdown(child_blocks)
+            child_content = blocks_to_markdown(child_blocks, page_export_path)
             markdown_content += child_content
         elif block_type == "column_list":
             # Process each column
             if block.get("has_children"):
                 for column in block.get("children", []):
-                    column_content = process_block(column)
+                    column_content = process_block(column, page_export_path)
                     markdown_content += column_content
         elif block_type == "column":
             # Process blocks inside the column
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []))
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
                 markdown_content += child_markdown
         elif block_type == "child_database":
             database_id = block.get("id")
             child_database = notion.databases.retrieve(database_id)
             child_title = child_database.get("title", [{}])[0].get("plain_text", "Untitled")
             markdown_content += f"### Child Database: {child_title}\n\n"
+        elif block_type == "image":
+            image_type = block.get("image", {}).get("type")
+            if image_type == "file":
+                image_url = block.get("image", {}).get("file", {}).get("url", "")
+            elif image_type == "external":
+                image_url = block.get("image", {}).get("external", {}).get("url", "")
+            caption = get_rich_text(block.get("image", {}).get("caption", []))
+
+            if enable_local_backup and page_export_path is not None:
+                # Download the image
+                response = requests.get(image_url)
+                if response.status_code == 200:
+                    # Create an images directory within the page export path
+                    images_dir = os.path.join(page_export_path, "images")
+                    if not os.path.exists(images_dir):
+                        os.makedirs(images_dir)
+                    # Generate a filename for the image
+                    image_filename = os.path.join(images_dir, os.path.basename(image_url.split("?")[0]))
+                    # Save the image
+                    with open(image_filename, 'wb') as image_file:
+                        image_file.write(response.content)
+                    # Adjust the markdown to reference the local image file
+                    relative_path = os.path.relpath(image_filename, page_export_path)
+                    markdown_content += f"![{caption}]({relative_path})\n\n"
+                else:
+                    logger.warning(f"Failed to download image from {image_url}")
+                    # Fallback to the original URL
+                    markdown_content += f"![{caption}]({image_url})\n\n"
+            else:
+                # If we can't save the image locally, use the image URL
+                markdown_content += f"![{caption}]({image_url})\n\n"
         else:
             logger.warning(f"Unsupported block type: {block_type}")
     except Exception as e:
         logger.error(f"Error processing block {block_type}: {e}")
     return markdown_content
 
-def blocks_to_markdown(blocks):
+def blocks_to_markdown(blocks, page_export_path):
     markdown_content = ""
     for block in blocks:
-        content = process_block(block)
+        content = process_block(block, page_export_path)
         markdown_content += content
     return markdown_content
 
-def page_to_markdown(page):
+def page_to_markdown(page, page_export_path):
     markdown_content = ""
     try:
         page_id = page['id']
         blocks = retrieve_all_blocks(page_id)
-        markdown_content = blocks_to_markdown(blocks)
+        markdown_content = blocks_to_markdown(blocks, page_export_path)
     except Exception as e:
         logger.error(f"Error converting page {page_id} to Markdown: {e}")
     return markdown_content
@@ -332,36 +365,32 @@ def export_pages(items):
                 file_name = f"{sanitized_title.replace(' ', '_')}.md"
                 logger.info(f"Processing page {idx}/{total_items}: {item_title}")
 
-                # Export the page to Markdown
-                content = page_to_markdown(item)
-                if not content:
-                    logger.error(f"Failed to export page {item_title}")
-                    continue
-
                 # Set up directory for pages and file path
+                page_export_path = os.path.join(EXPORT_PATH, "pages")
                 if enable_local_backup:
-                    page_export_path = os.path.join(EXPORT_PATH, "pages")
                     if not os.path.exists(page_export_path):
                         os.makedirs(page_export_path)
                     file_path = os.path.join(page_export_path, file_name)
                 else:
                     file_path = None
 
+                # Export the page to Markdown
+                content = page_to_markdown(item, page_export_path)
+                if not content:
+                    logger.error(f"Failed to export page {item_title}")
+                    continue
+
                 # For Backblaze, adjust the object key to include the directory
                 backblaze_file_name = f"pages/{file_name}"
 
-            else:
-                logger.warning(f"Unknown object type {item['object']}, skipping.")
-                continue
+                # Now, save or upload the content
+                if enable_local_backup and file_path:
+                    with open(file_path, 'w', encoding="utf-8-sig", newline='') as f:
+                        f.write(content)
+                    logger.info(f"Exported {item_title} to {file_path}")
 
-            # Now, save or upload the content
-            if enable_local_backup and file_path:
-                with open(file_path, 'w', encoding="utf-8-sig", newline='') as f:
-                    f.write(content)
-                logger.info(f"Exported {item_title} to {file_path}")
-
-            if enable_backblaze_backup:
-                upload_to_backblaze(content, backblaze_file_name)
+                if enable_backblaze_backup:
+                    upload_to_backblaze(content, backblaze_file_name)
 
         logger.info("Export completed.")
 
@@ -521,9 +550,17 @@ def schedule_backup():
 
 
 if __name__ == "__main__":
-    schedule_backup()
-    logger.info("Scheduler initialized. Waiting for scheduled backups...")
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+    parser = argparse.ArgumentParser(description='Notion Backup Script')
+    parser.add_argument('--run-now', action='store_true', help='Run backup immediately')
+    args = parser.parse_args()
+
+    if args.run_now:
+        main_backup()
+    else:
+        schedule_backup()
+        logger.info("Scheduler initialized. Waiting for scheduled backups...")
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+
 

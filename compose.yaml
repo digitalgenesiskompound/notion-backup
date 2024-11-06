@@ -8,6 +8,7 @@ services:
         TIMEZONE: ${TIMEZONE}
     container_name: notion-backup
     restart: unless-stopped
+    entrypoint: ["python", "notion_export.py"]
     environment:
       - NOTION_API_TOKEN=${NOTION_API_TOKEN}
       - EXPORT_PATH=${CONTAINER_EXPORT_PATH}

@@ -113,6 +113,12 @@ This will follow the logs of the container, CTRL + C to stop following logs.
 
 ## Scheduling Backups
 
+### Run a Manual Backup Immediatly
+
+```bash
+docker compose run notion-backup --run-now
+```
+
 The backup schedule is controlled by the `BACKUP_INTERVAL` and `BACKUP_TIME` variables in the `.env` file.
 
 - **BACKUP_INTERVAL**:
