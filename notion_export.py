@@ -422,17 +422,31 @@ def upload_to_backblaze(content, file_name):
         logger.error(f"Error uploading {file_name} to Backblaze B2: {e}")
 
 def get_child_pages(page_id):
-    child_pages = []
+    child_items = []
     try:
-        blocks = notion.blocks.children.list(block_id=page_id, page_size=100).get('results', [])
-        for block in blocks:
-            if block.get('type') == 'child_page':
-                child_page_id = block['id']
-                child_page = notion.pages.retrieve(child_page_id)
-                child_pages.append(child_page)
+        blocks = notion.blocks.children.list(block_id=page_id, page_size=100)
+        while True:
+            results = blocks.get('results', [])
+            for block in results:
+                block_type = block.get('type')
+                if block_type == 'child_page':
+                    child_page_id = block['id']
+                    child_page = notion.pages.retrieve(child_page_id)
+                    child_items.append(child_page)
+                elif block_type == 'child_database':
+                    child_database_id = block['id']
+                    child_database = notion.databases.retrieve(child_database_id)
+                    child_items.append(child_database)
+            if not blocks.get('has_more'):
+                break
+            blocks = notion.blocks.children.list(
+                block_id=page_id,
+                start_cursor=blocks['next_cursor'],
+                page_size=100
+            )
     except Exception as e:
-        logger.error(f"Error fetching child pages for page {page_id}: {e}")
-    return child_pages
+        logger.error(f"Error fetching child pages and databases for page {page_id}: {e}")
+    return child_items
 
 @timing
 def export_pages(items, parent_path=""):
@@ -444,6 +458,12 @@ def export_pages(items, parent_path=""):
             os.makedirs(EXPORT_PATH)
 
         for idx, item in enumerate(items, start=1):
+            item_id = item['id']
+            # Check if item has already been processed
+            if item_id in page_id_to_dir_path:
+                logger.info(f"Item {item_id} already processed, skipping.")
+                continue
+
             item_title = "Untitled"
             content = ''
             file_name = ''
@@ -690,6 +710,8 @@ def extract_property_value(prop):
 @timing
 def main_backup():
     logger.info("Starting backup process...")
+    global page_id_to_dir_path
+    page_id_to_dir_path = {}  # Reset the mapping
     pages = fetch_notion_pages_and_databases()
 
     if pages:
