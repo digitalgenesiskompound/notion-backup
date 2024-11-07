@@ -148,10 +148,16 @@ def get_unique_directory_name(parent_path, base_name):
         count += 1
     return directory_name
 
-# Replace the global mapping with database functions
 def get_page_title(page):
     try:
-        if 'properties' in page:
+        if page.get('object') == 'database':
+            title_array = page.get('title', [])
+            if title_array:
+                title_text = get_rich_text(title_array)
+                return title_text
+            else:
+                return "Untitled"
+        elif 'properties' in page:
             properties = page.get("properties", {})
             for prop_name, prop in properties.items():
                 if prop.get("type") == "title":
