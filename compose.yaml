@@ -32,6 +32,7 @@ services:
   postgres:
     image: postgres:13
     restart: unless-stopped
+    container_name: notion-postgres
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}

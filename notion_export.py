@@ -738,6 +738,9 @@ def export_pages(items, parent_path=""):
                     new_relative_path = os.path.relpath(item_export_path, EXPORT_PATH)
                     update_relative_path(item_id, new_relative_path)
                     logger.info(f"Renamed directory to {new_item_export_path}")
+                # Ensure the directory exists
+                if not os.path.exists(item_export_path):
+                    os.makedirs(item_export_path)
             else:
                 # Create a new directory
                 if parent_path:
