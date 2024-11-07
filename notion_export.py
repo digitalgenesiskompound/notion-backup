@@ -765,6 +765,10 @@ def export_pages(items, parent_path=""):
             # Export content
             if item['object'] == 'database':
                 content = export_database_to_csv(item)
+                # Now retrieve pages within the database
+                database_entries = get_database_entries(item_id)
+                if database_entries:
+                    export_pages(database_entries, parent_path=item_export_path)
             elif item['object'] == 'page':
                 content = page_to_markdown(item, item_export_path)
             else:
@@ -789,7 +793,7 @@ def export_pages(items, parent_path=""):
             if enable_backblaze_backup:
                 upload_to_backblaze(content, backblaze_file_name)
 
-            # Recursively export child items
+            # Recursively export child items (pages and databases)
             child_items = get_child_pages(item_id)
             if child_items:
                 export_pages(child_items, parent_path=item_export_path)
@@ -799,6 +803,7 @@ def export_pages(items, parent_path=""):
     except Exception as e:
         logger.error(f"Error exporting items: {e}")
         traceback.print_exc()
+
 
 def upload_to_backblaze(content, file_name):
     try:
