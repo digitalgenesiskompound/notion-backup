@@ -9,13 +9,15 @@ import io
 import argparse
 import json
 import requests
-import sqlite3
-import threading  # Import threading module
 from notion_client import Client
 from dotenv import load_dotenv
 import traceback
 import functools
 from concurrent.futures import ThreadPoolExecutor
+import threading
+
+from sqlalchemy import create_engine, Column, String
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -77,12 +79,18 @@ if not enable_local_backup and not enable_backblaze_backup:
 # Create a global ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
 
-# Database file path inside a 'cache' directory
-CACHE_DIR = os.path.join(EXPORT_PATH, '.cache')
-DB_FILE = os.path.join(CACHE_DIR, 'page_id_map.db')
-
 # Create a threading lock for database operations
-db_lock = threading.Lock()
+db_session = threading.local()
+
+def get_db():
+    if not hasattr(db_session, 'session'):
+        db_session.session = SessionLocal()
+    return db_session.session
+
+class PageMap(Base):
+    __tablename__ = "page_map"
+    page_id = Column(String, primary_key=True, index=True)
+    relative_path = Column(String)
 
 def timing(func):
     @functools.wraps(func)
@@ -95,37 +103,28 @@ def timing(func):
     return wrapper
 
 def initialize_db():
-    if not os.path.exists(CACHE_DIR):
-        os.makedirs(CACHE_DIR)
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS page_map (
-                    page_id TEXT PRIMARY KEY,
-                    relative_path TEXT
-                )
-            ''')
-            conn.commit()
-    logger.info("Initialized SQLite database for page mapping.")
+    Base.metadata.create_all(bind=engine)
+    logger.info("Initialized PostgreSQL database for page mapping.")
 
 def get_relative_path(page_id):
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT relative_path FROM page_map WHERE page_id = ?', (page_id,))
-            result = cursor.fetchone()
-    return result[0] if result else None
+    db = get_db()
+    page_map = db.query(PageMap).filter(PageMap.page_id == page_id).first()
+    return page_map.relative_path if page_map else None
 
 def update_relative_path(page_id, relative_path):
-    with db_lock:
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute('REPLACE INTO page_map (page_id, relative_path) VALUES (?, ?)', (page_id, relative_path))
-            conn.commit()
+    db = get_db()
+    page_map = db.query(PageMap).filter(PageMap.page_id == page_id).first()
+    if page_map:
+        page_map.relative_path = relative_path
+    else:
+        page_map = PageMap(page_id=page_id, relative_path=relative_path)
+        db.add(page_map)
+    db.commit()
 
 def close_db():
-    pass  # Connections are closed automatically using context managers
+    db = get_db()
+    db.close()
+    logger.info("Closed database session.")
 
 def get_unique_directory_name(parent_path, base_name):
     directory_name = base_name
@@ -135,6 +134,7 @@ def get_unique_directory_name(parent_path, base_name):
         count += 1
     return directory_name
 
+# Replace the global mapping with database functions
 def get_page_title(page):
     try:
         if 'properties' in page:
