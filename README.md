@@ -61,7 +61,7 @@ If you wish to upload backups to Backblaze B2:
 mv .env.example .env
 ```
 
-- Open the `.env` file in a text editor and configure the following variables:
+- Open the `.env` file in a text editor and configure the variables for your setup.
 
 Using Linux's Nano:
 ```bash
