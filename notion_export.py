@@ -221,7 +221,10 @@ def fetch_notion_pages_and_databases():
                 parent = db.get('parent', {})
                 parent_type = parent.get('type')
                 if parent_type == 'workspace':
-                    pages_and_databases.append(db)
+                    database_id = db['id']
+                    # Retrieve full database object
+                    full_db = notion.databases.retrieve(database_id)
+                    pages_and_databases.append(full_db)
                 else:
                     continue  # Skip databases that are not top-level
             has_more = response.get('has_more', False)
@@ -703,6 +706,7 @@ def get_child_pages(page_id):
                     child_items.append(child_page)
                 elif block_type == 'child_database':
                     child_database_id = block['id']
+                    # Retrieve full database object
                     child_database = notion.databases.retrieve(child_database_id)
                     child_items.append(child_database)
             if not blocks.get('has_more'):
