@@ -3,3 +3,5 @@ python-dotenv
 boto3
 schedule
 requests
+psycopg2-binary
+SQLAlchemy
