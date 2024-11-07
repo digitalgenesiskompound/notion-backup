@@ -2,7 +2,8 @@
 
 ### Features
 
-- Export all pages and databases from your Notion workspace to **Markdown files** and **CSV**.
+- Export pages, databases, images, files and pdf's from your Notion workspace.
+- Databases are stored as **.csv** files and normal text pages are stored as **Markdown / .md** files. Images, files and pdf's are stored in their original formats.
 - Store backups locally, on Backblaze B2 cloud storage, or both.
 - Schedule backups at intervals you define (Hourly, Daily, Weekly, Monthly).
 - Customize the time of day backups run.
@@ -117,6 +118,12 @@ This will follow the logs of the container, CTRL + C to stop following logs.
 - If you correctly configured the environment variables than you should be seeing your backups from Notion as per scheduled request.
 
 ## Scheduling Backups
+
+### Run a Manual Backup Immediatly
+
+```bash
+docker compose run --rm notion-backup --run-now
+```
 
 The backup schedule is controlled by the `BACKUP_INTERVAL` and `BACKUP_TIME` variables in the `.env` file.
 
