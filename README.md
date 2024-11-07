@@ -68,33 +68,6 @@ Using Linux's Nano:
 sudo nano .env
 ```
 
-```bash
-# Notion API Token
-NOTION_API_TOKEN=required
-
-# Backup methods: 'local', 'backblaze', or 'both'
-BACKUP_METHODS=local
-
-# Local File Path for Exported Notes
-EXPORT_PATH=/required/path/to/export
-
-#Backblaze B2 credentials
-#Be sure to set your bucket's lifecycle settings or the files will keep getting added and not ovewritten inside of your bucket.
-B2_KEY_ID=optional
-B2_APPLICATION_KEY=optional
-B2_BUCKET_NAME=optional
-B2_ENDPOINT_URL=https://s3.us-west-002.backblazeb2.com  # Change to your region or you will see errors! (Ensure to include the https://) You will find this endpoint on the Buckets page within the specified bucket.
-
-# Timezone setting (e.g., 'UTC', 'America/New_York', 'Europe/London')
-TIMEZONE=America/New_York
-
-# Backup interval: 'Hourly', 'Daily', 'Weekly', 'Monthly'
-BACKUP_INTERVAL=Daily
-
-# Time of day to run the backup (24-hour format HH:MM)
-BACKUP_TIME=00:00
-```
-
 # Usage
 
 ### Run with Docker Compose
