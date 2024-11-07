@@ -547,19 +547,25 @@ def get_database_entries(database_id):
     entries = []
     try:
         response = notion.databases.query(database_id=database_id, page_size=100)
-        entries.extend(response.get('results', []))
-
-        while response.get('has_more'):
+        results = response.get('results', [])
+        while True:
+            for entry in results:
+                page_id = entry['id']
+                # Retrieve full page data
+                full_page = notion.pages.retrieve(page_id)
+                entries.append(full_page)
+            if not response.get('has_more'):
+                break
             response = notion.databases.query(
                 database_id=database_id,
                 start_cursor=response['next_cursor'],
                 page_size=100
             )
-            entries.extend(response.get('results', []))
+            results = response.get('results', [])
     except Exception as e:
         logger.error(f"Error fetching entries for database {database_id}: {e}")
-
     return entries
+
 
 @timing
 def export_database_to_csv(database):
