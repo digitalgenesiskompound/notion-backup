@@ -91,7 +91,7 @@ if not enable_local_backup and not enable_backblaze_backup:
     exit(1)
 
 # Create a global ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
+# executor = ThreadPoolExecutor(max_workers=5)  # Adjust the number of workers as needed
 
 # Create a threading lock for database operations
 db_session = threading.local()
@@ -287,7 +287,7 @@ def get_rich_text(rich_text_array):
         text_content += plain_text
     return text_content
 
-def process_block(block, page_export_path):
+def process_block(block, page_export_path, executor=None):
     markdown_content = ""
     block_type = block.get("type")
     try:
@@ -295,7 +295,7 @@ def process_block(block, page_export_path):
             text_content = get_rich_text(block.get("paragraph", {}).get("rich_text", []))
             markdown_content += f"{text_content}\n\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path, executor=executor)
                 markdown_content += child_markdown
         elif block_type == "heading_1":
             text_content = get_rich_text(block.get("heading_1", {}).get("rich_text", []))
@@ -310,13 +310,13 @@ def process_block(block, page_export_path):
             text_content = get_rich_text(block.get("bulleted_list_item", {}).get("rich_text", []))
             markdown_content += f"- {text_content}\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path, executor=executor)
                 markdown_content += child_markdown
         elif block_type == "numbered_list_item":
             text_content = get_rich_text(block.get("numbered_list_item", {}).get("rich_text", []))
             markdown_content += f"1. {text_content}\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path, executor=executor)
                 markdown_content += child_markdown
         elif block_type == "to_do":
             text_content = get_rich_text(block.get("to_do", {}).get("rich_text", []))
@@ -324,13 +324,13 @@ def process_block(block, page_export_path):
             checkbox = "[x]" if checked else "[ ]"
             markdown_content += f"{checkbox} {text_content}\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path, executor=executor)
                 markdown_content += child_markdown
         elif block_type == "toggle":
             text_content = get_rich_text(block.get("toggle", {}).get("rich_text", []))
             markdown_content += f"<details><summary>{text_content}</summary>\n"
             if block.get("has_children"):
-                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path)
+                child_markdown = blocks_to_markdown(block.get("children", []), page_export_path, executor=executor)
                 markdown_content += child_markdown
             markdown_content += "</details>\n"
         elif block_type == "quote":
@@ -395,7 +395,8 @@ def process_block(block, page_export_path):
                 # Generate a filename for the image
                 image_filename = os.path.join(images_dir, os.path.basename(image_url.split("?")[0]))
                 # Schedule the image download
-                executor.submit(download_file_if_needed, image_url, image_filename)
+                if executor:
+                    executor.submit(download_file_if_needed, image_url, image_filename)
                 # Adjust the markdown to reference the local image file
                 relative_path = os.path.relpath(image_filename, page_export_path)
                 markdown_content += f"![{caption}]({relative_path})\n\n"
@@ -418,7 +419,8 @@ def process_block(block, page_export_path):
                 # Generate a filename for the file
                 file_filename = os.path.join(files_dir, os.path.basename(file_url.split("?")[0]))
                 # Schedule the file download
-                executor.submit(download_file_if_needed, file_url, file_filename)
+                if executor:
+                    executor.submit(download_file_if_needed, file_url, file_filename)
                 # Adjust the markdown to reference the local file
                 relative_path = os.path.relpath(file_filename, page_export_path)
                 markdown_content += f"[{caption or 'File'}]({relative_path})\n\n"
@@ -441,7 +443,8 @@ def process_block(block, page_export_path):
                 # Generate a filename for the PDF
                 pdf_filename = os.path.join(files_dir, os.path.basename(pdf_url.split("?")[0]))
                 # Schedule the PDF download
-                executor.submit(download_file_if_needed, pdf_url, pdf_filename)
+                if executor:
+                    executor.submit(download_file_if_needed, pdf_url, pdf_filename)
                 # Adjust the markdown to reference the local PDF file
                 relative_path = os.path.relpath(pdf_filename, page_export_path)
                 markdown_content += f"[{caption or 'PDF'}]({relative_path})\n\n"
@@ -523,19 +526,19 @@ def save_csv_if_needed(table_data, csv_file_path):
     except Exception as e:
         logger.error(f"Error saving CSV {csv_file_path}: {e}")
 
-def blocks_to_markdown(blocks, page_export_path):
+def blocks_to_markdown(blocks, page_export_path, executor=None):
     markdown_content = ""
     for block in blocks:
-        content = process_block(block, page_export_path)
+        content = process_block(block, page_export_path, executor=executor)
         markdown_content += content
     return markdown_content
 
-def page_to_markdown(page, page_export_path):
+def page_to_markdown(page, page_export_path, executor=None):
     markdown_content = ""
     try:
         page_id = page['id']
         blocks = retrieve_all_blocks(page_id)
-        markdown_content = blocks_to_markdown(blocks, page_export_path)
+        markdown_content = blocks_to_markdown(blocks, page_export_path, executor=executor)
     except Exception as e:
         logger.error(f"Error converting page {page_id} to Markdown: {e}")
         traceback.print_exc()
@@ -721,7 +724,7 @@ def get_child_pages(page_id):
     return child_items
 
 @timing
-def export_pages(items, parent_path=""):
+def export_pages(items, parent_path="", executor=None):
     try:
         total_items = len(items)
         logger.info(f"Starting export of {total_items} items...")
@@ -787,9 +790,9 @@ def export_pages(items, parent_path=""):
                 # Now retrieve pages within the database
                 database_entries = get_database_entries(item_id)
                 if database_entries:
-                    export_pages(database_entries, parent_path=item_export_path)
+                    export_pages(database_entries, parent_path=item_export_path, executor=executor)
             elif item['object'] == 'page':
-                content = page_to_markdown(item, item_export_path)
+                content = page_to_markdown(item, item_export_path, executor=executor)
             else:
                 content = ''
 
@@ -815,7 +818,7 @@ def export_pages(items, parent_path=""):
             # Recursively export child items (pages and databases)
             child_items = get_child_pages(item_id)
             if child_items:
-                export_pages(child_items, parent_path=item_export_path)
+                export_pages(child_items, parent_path=item_export_path, executor=executor)
 
         logger.info("Export completed.")
 
@@ -839,12 +842,13 @@ def main_backup():
 
     if pages:
         logger.info("Exporting pages and databases...")
-        export_pages(pages)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            export_pages(pages, executor=executor)
     else:
         logger.warning("No pages or databases found.")
 
-    executor.shutdown(wait=True)  # Wait for all downloads to complete
-    close_db()  # Optional since connections are closed automatically
+    close_db()
+
 
 def schedule_backup():
     interval = os.getenv("BACKUP_INTERVAL", "Daily").lower()
