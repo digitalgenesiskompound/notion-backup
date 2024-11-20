@@ -1,0 +1,146 @@
+/* General page styling */
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #2e2e2e;
+    color: #e0e0e0;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+
+/* Container for the content */
+.container {
+    max-width: 800px;
+    width: 100%;
+    background-color: #3c3c3c;
+    margin: 40px auto;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Heading styling */
+h1 {
+    color: #ffffff;
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+
+/* Breadcrumbs */
+.breadcrumbs {
+    margin-bottom: 20px;
+    font-size: 0.9em;
+    color: #e0e0e0;
+}
+
+.breadcrumbs a {
+    color: #ff7f7f; /* Pastel pale red */
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.breadcrumbs a:hover {
+    text-decoration: underline;
+}
+
+/* Buttons styling */
+.button-group {
+    margin-bottom: 20px;
+}
+
+.download-button {
+    display: inline-block;
+    background-color: #ff7f7f; /* Pastel pale red */
+    color: #ffffff;
+    font-size: 1em;
+    font-weight: bold;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    transition: background-color 0.3s;
+    margin-right: 10px;
+}
+
+.download-button:hover {
+    background-color: #ff4c4c; /* Darker pastel red on hover */
+}
+
+/* File list */
+.file-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.file-list-item {
+    background-color: #4a4a4a;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    font-size: 0.9em;
+    transition: background-color 0.2s;
+}
+
+.file-list-item:hover {
+    background-color: #5a5a5a;
+}
+
+.file-checkbox {
+    margin-right: 12px;
+    transform: scale(1.2);
+    cursor: pointer;
+}
+
+.file-link {
+    color: #e0e0e0;
+    text-decoration: none;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+}
+
+.file-link:hover {
+    text-decoration: underline;
+}
+
+.file-icon {
+    margin-right: 8px;
+    font-size: 1.2em;
+    color: #ff7f7f;
+}
+
+/* Loading Spinner */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(46, 46, 46, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.spinner {
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid #ff7f7f;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

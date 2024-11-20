@@ -8,8 +8,8 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-notion.txt .
+RUN pip install --no-cache-dir -r requirements-notion.txt
 
 # Copy the script and other necessary files
 COPY notion_export.py .
@@ -17,11 +17,15 @@ COPY .env .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Set the timezone based on the .env file
 ARG TIMEZONE
 ENV TZ=${TIMEZONE}
 RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime && echo ${TZ} > /etc/timezone
 
-# Run the script
-CMD ["python", "notion_export.py"]
+# Define the entrypoint
+ENTRYPOINT ["python", "notion_export.py"]
+
+# Default command arguments
+CMD []

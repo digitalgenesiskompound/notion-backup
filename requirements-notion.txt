@@ -1,0 +1,7 @@
+notion-client==2.2.1
+python-dotenv==1.0.1
+boto3==1.35.66
+schedule==1.2.2
+requests==2.32.3
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.36

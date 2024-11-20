@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notion Backup Explorer</title>
+    <link rel="stylesheet" type="text/css" href="/static/styles.css">
+    <!-- Bootstrap Icons for visual cues -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📁 Notion Backup Explorer</h1>
+        
+        <!-- Breadcrumb Navigation -->
+        <div class="breadcrumbs" id="breadcrumb">
+            <a href="#" data-path="">Root</a>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="button-group">
+            <button id="download-all-button" class="download-button" onclick="downloadAll()">Download All as ZIP</button>
+            <button id="download-selected-button" class="download-button" onclick="downloadSelected()">Download Selected</button>
+        </div>
+        
+        <!-- Directory and File Listing -->
+        <form id="file-list-form">
+            <ul class="file-list" id="file-list">
+                <!-- Content will be dynamically loaded here -->
+            </ul>
+        </form>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loading" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        let currentPath = '';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDirectory('');
+
+            // Event delegation for breadcrumb navigation
+            document.getElementById('breadcrumb').addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    e.preventDefault();
+                    const path = e.target.getAttribute('data-path');
+                    loadDirectory(path);
+                }
+            });
+        });
+
+        // Function to load directory contents
+        function loadDirectory(path) {
+            currentPath = path;
+            showLoading(true);
+            fetch(`/api/list?path=${encodeURIComponent(path)}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        showLoading(false);
+                        return;
+                    }
+                    updateBreadcrumb(data.breadcrumb);
+                    updateFileList(data.directories, data.files);
+                    showLoading(false);
+                })
+                .catch(error => {
+                    console.error('Error fetching directory:', error);
+                    alert('An error occurred while loading the directory.');
+                    showLoading(false);
+                });
+        }
+
+        // Function to update breadcrumb navigation
+        function updateBreadcrumb(breadcrumb) {
+            const breadcrumbDiv = document.getElementById('breadcrumb');
+            breadcrumbDiv.innerHTML = ''; // Clear existing breadcrumbs
+            breadcrumb.forEach((crumb, index) => {
+                const link = document.createElement('a');
+                link.href = '#';
+                link.textContent = crumb.name;
+                link.setAttribute('data-path', crumb.path);
+                breadcrumbDiv.appendChild(link);
+                if (index < breadcrumb.length - 1) {
+                    const separator = document.createTextNode(' / ');
+                    breadcrumbDiv.appendChild(separator);
+                }
+            });
+        }
+
+        // Function to update the file and directory list
+        function updateFileList(directories, files) {
+            const fileList = document.getElementById('file-list');
+            fileList.innerHTML = ''; // Clear existing list
+
+            // Add directories
+            directories.forEach(directory => {
+                const listItem = document.createElement('li');
+                listItem.className = 'file-list-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.name = 'selected_paths';
+                checkbox.value = currentPath ? `${currentPath}/${directory}` : directory;
+                checkbox.className = 'file-checkbox';
+
+                const link = document.createElement('a');
+                link.href = '#';
+                link.className = 'file-link';
+                link.innerHTML = `<i class="bi bi-folder-fill file-icon"></i> ${directory}`;
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const newPath = currentPath ? `${currentPath}/${directory}` : directory;
+                    loadDirectory(newPath);
+                });
+
+                listItem.appendChild(checkbox);
+                listItem.appendChild(link);
+                fileList.appendChild(listItem);
+            });
+
+            // Add files
+            files.forEach(file => {
+                const listItem = document.createElement('li');
+                listItem.className = 'file-list-item';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.name = 'selected_paths';
+                checkbox.value = currentPath ? `${currentPath}/${file}` : file;
+                checkbox.className = 'file-checkbox';
+
+                const span = document.createElement('span');
+                span.className = 'file-link';
+                span.innerHTML = `<i class="bi bi-file-earmark-fill file-icon"></i> ${file}`;
+
+                listItem.appendChild(checkbox);
+                listItem.appendChild(span);
+                fileList.appendChild(listItem);
+            });
+        }
+
+        // Function to download all files as a ZIP
+        function downloadAll() {
+            window.location.href = '/download_all';
+        }
+
+        // Function to download selected files and directories
+        function downloadSelected() {
+            const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('Please select at least one file or directory to download.');
+                return;
+            }
+
+            // Collect the selected paths
+            const selectedPaths = Array.from(checkboxes).map(checkbox => checkbox.value);
+
+            // Send AJAX request to download_selected
+            fetch('/download_selected', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ selected_paths: selectedPaths }),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => { throw data; });
+                }
+                const disposition = response.headers.get('Content-Disposition');
+                let filename = 'download.zip';
+                if (disposition && disposition.indexOf('filename=') !== -1) {
+                    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                    const matches = filenameRegex.exec(disposition);
+                    if (matches != null && matches[1]) { 
+                        filename = matches[1].replace(/['"]/g, '');
+                    }
+                }
+                return response.blob().then(blob => ({ blob, filename }));
+            })
+            .then(({ blob, filename }) => {
+                // Create a temporary link to trigger the download
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                console.error('Error downloading selected items:', error);
+                alert(error.error || 'An error occurred while downloading the selected items.');
+            });
+        }
+
+        // Function to show or hide the loading spinner
+        function showLoading(show) {
+            const loadingDiv = document.getElementById('loading');
+            if (show) {
+                loadingDiv.style.display = 'flex';
+            } else {
+                loadingDiv.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

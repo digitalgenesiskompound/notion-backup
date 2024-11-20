@@ -8,7 +8,6 @@ services:
         TIMEZONE: ${TIMEZONE}
     container_name: notion-backup
     restart: unless-stopped
-    entrypoint: ["python", "notion_export.py"]
     environment:
       - NOTION_API_TOKEN=${NOTION_API_TOKEN}
       - EXPORT_PATH=${CONTAINER_EXPORT_PATH}
@@ -35,12 +34,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.webgui
+    container_name: notion-webgui
     volumes:
       - notion-backup:/notion-backup
     ports:
       - "8080:5000"
     depends_on:
       - notion-backup
+    networks:
+      - backup-network
 
   postgres:
     image: postgres:15-alpine

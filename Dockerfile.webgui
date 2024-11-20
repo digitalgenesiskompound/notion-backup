@@ -2,8 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY webgui.py /app
+# Copy requirements.txt first for better caching
+COPY requirements-webgui.txt .
+RUN pip install --no-cache-dir -r requirements-webgui.txt
 
-RUN pip install Flask
+# Copy the application code
+COPY webgui.py /app
+COPY templates /app/templates
+COPY static /app/static
 
 CMD ["python", "webgui.py"]
