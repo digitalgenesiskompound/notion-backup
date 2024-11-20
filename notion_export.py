@@ -194,7 +194,13 @@ def requests_session():
 
 def fetch_notion_data(endpoint, headers):
     session = requests_session()
-    response = session.get(endpoint, headers=headers)
+    data = {
+        "filter": {
+            "value": "page",
+            "property": "object"
+        }
+    }
+    response = session.post(endpoint, headers=headers, json=data)
     response.raise_for_status()  # Raise an error for bad responses
     return response.json()
 
@@ -203,7 +209,10 @@ def fetch_notion_pages_and_databases():
     pages_and_databases = []
     try:
         logger.info("Starting to fetch top-level pages and databases...")
-        headers = {"Authorization": f"Bearer {os.getenv('NOTION_API_TOKEN')}"}
+        headers = {
+            "Authorization": f"Bearer {os.getenv('NOTION_API_TOKEN')}",
+            "Notion-Version": "2022-06-28"
+        }
         endpoint = "https://api.notion.com/v1/search"
         notion_data = fetch_notion_data(endpoint, headers)
 
