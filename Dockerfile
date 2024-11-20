@@ -4,8 +4,8 @@ FROM python:3.9-alpine
 # Set the working directory
 WORKDIR /app
 
-# Install tzdata for timezone handling
-RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+# Install dependencies, including tzdata for time zone data
+RUN apk add --no-cache gcc musl-dev libffi-dev tzdata
 
 # Copy the requirements file and install dependencies
 COPY requirements.txt .
