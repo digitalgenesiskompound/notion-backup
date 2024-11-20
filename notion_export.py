@@ -26,7 +26,7 @@ load_dotenv()
 
 # Get environment variables
 NOTION_API_TOKEN = os.getenv("NOTION_API_TOKEN")
-EXPORT_PATH = os.getenv("CONTAINER_EXPORT_PATH")
+EXPORT_PATH = os.getenv("CONTAINER_EXPORT_PATH", "/notion-backup")
 BACKUP_METHODS = os.getenv("BACKUP_METHODS", "both").lower()
 HOST_EXPORT_PATH = os.getenv("HOST_EXPORT_PATH")
 ROOT_DIR_NAME = os.getenv("ROOT_DIR_NAME", "pages")  # ROOT_DIR_NAME variable

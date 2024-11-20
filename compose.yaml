@@ -27,9 +27,20 @@ services:
     depends_on:
       - postgres
     volumes:
-      - ${HOST_EXPORT_PATH}:${CONTAINER_EXPORT_PATH}
+      - notion-backup:/notion-backup
     networks:
       - backup-network
+
+  webgui:
+    build:
+      context: .
+      dockerfile: Dockerfile.webgui
+    volumes:
+      - notion-backup:/notion-backup
+    ports:
+      - "8080:5000"
+    depends_on:
+      - notion-backup
 
   postgres:
     image: postgres:15-alpine
@@ -46,6 +57,7 @@ services:
 
 volumes:
   pgdata:
+  notion-backup:
 
 networks:
   backup-network:

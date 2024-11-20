@@ -1,0 +1,9 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY webgui.py /app
+
+RUN pip install Flask
+
+CMD ["python", "webgui.py"]
