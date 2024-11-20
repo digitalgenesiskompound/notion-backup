@@ -174,7 +174,7 @@ def get_page_title(page):
         return "Untitled"
     except Exception as e:
         logger.error(f"Error getting page title: {e}")
-        traceback.print_exc()
+        logger.exception()
         return "Untitled"
 
 def sanitize_filename(filename):
@@ -515,7 +515,7 @@ def process_block(block, page_export_path, executor=None):
             logger.warning(f"Unsupported block type: {block_type}")
     except Exception as e:
         logger.error(f"Error processing block {block_type}: {e}")
-        traceback.print_exc()
+        logger.exception()
     return markdown_content
 
 def download_file_if_needed(file_url, file_path):
@@ -572,7 +572,7 @@ def page_to_markdown(page, page_export_path, executor=None):
         markdown_content = blocks_to_markdown(blocks, page_export_path, executor=executor)
     except Exception as e:
         logger.error(f"Error converting page {page_id} to Markdown: {e}")
-        traceback.print_exc()
+        logger.exception()
     return markdown_content
 
 def is_content_same(new_content, file_path):
@@ -652,7 +652,7 @@ def export_database_to_csv(database):
 
     except Exception as e:
         logger.error(f"Error exporting database to CSV: {e}")
-        traceback.print_exc()
+        logger.exception()
         return ''
 
 def extract_property_value(prop):
@@ -855,7 +855,7 @@ def export_pages(items, parent_path="", executor=None):
 
     except Exception as e:
         logger.error(f"Error exporting items: {e}")
-        traceback.print_exc()
+        logger.exception()
 
 
 def upload_to_backblaze(content, file_name):
