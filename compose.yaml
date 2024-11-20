@@ -28,9 +28,11 @@ services:
       - postgres
     volumes:
       - ${HOST_EXPORT_PATH}:${CONTAINER_EXPORT_PATH}
+    networks:
+      - backup-network
 
   postgres:
-    image: postgres:13
+    image: postgres:15-alpine
     restart: unless-stopped
     container_name: notion-postgres
     environment:
@@ -39,7 +41,13 @@ services:
       - POSTGRES_DB=${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - backup-network
 
 volumes:
   pgdata:
+
+networks:
+  backup-network:
+    driver: bridge
       

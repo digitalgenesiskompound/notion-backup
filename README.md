@@ -61,33 +61,11 @@ If you wish to upload backups to Backblaze B2:
 mv .env.example .env
 ```
 
-- Open the `.env` file in a text editor and configure the following variables:
+- Open the `.env` file in a text editor and configure the variables for your setup.
 
+Using Linux's Nano:
 ```bash
-# Notion API Token
-NOTION_API_TOKEN=required
-
-# Backup methods: 'local', 'backblaze', or 'both'
-BACKUP_METHODS=local
-
-# Local File Path for Exported Notes
-EXPORT_PATH=/required/path/to/export
-
-#Backblaze B2 credentials
-#Be sure to set your bucket's lifecycle settings or the files will keep getting added and not ovewritten inside of your bucket.
-B2_KEY_ID=optional
-B2_APPLICATION_KEY=optional
-B2_BUCKET_NAME=optional
-B2_ENDPOINT_URL=https://s3.us-west-002.backblazeb2.com  # Change to your region or you will see errors! (Ensure to include the https://) You will find this endpoint on the Buckets page within the specified bucket.
-
-# Timezone setting (e.g., 'UTC', 'America/New_York', 'Europe/London')
-TIMEZONE=America/New_York
-
-# Backup interval: 'Hourly', 'Daily', 'Weekly', 'Monthly'
-BACKUP_INTERVAL=Daily
-
-# Time of day to run the backup (24-hour format HH:MM)
-BACKUP_TIME=00:00
+sudo nano .env
 ```
 
 # Usage
@@ -173,14 +151,6 @@ If you're using Backblaze B2 for cloud backups, ensure you have **ALL  of** the 
 ## Notes
 
 - **Timezones**: The application uses the timezone specified in the `TIMEZONE` variable to schedule backups at the correct local time.
-- **Docker Volumes**: If using local backups within Docker, ensure that the `EXPORT_PATH` is correctly mapped as a volume in the `docker-compose.yml` file.
-    
-    ```yaml
-    volumes:
-      - /path/on/host:/backup
-    ```
-    
-    Replace `/path/on/host` with the desired path on your host machine.
     
 - **Logging**: The application logs its activities. When running in Docker, you can view logs using `docker compose logs -f`.
 
