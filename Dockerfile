@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY notion_export.py .
 COPY .env .
 
-# Add a non-root user
-RUN addgroup -S appgroup && adduser -S notionbackup -G notionbackup
+# Add a non-root user and group
+RUN addgroup -S appgroup && adduser -S notionbackup -G appgroup
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
