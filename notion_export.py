@@ -18,6 +18,8 @@ import threading
 
 from sqlalchemy import create_engine, Column, String
 from sqlalchemy.orm import declarative_base, sessionmaker
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -176,15 +178,34 @@ def get_page_title(page):
         return "Untitled"
 
 def sanitize_filename(filename):
-    # Remove invalid filename characters
-    filename = re.sub(r'[<>:"/\\|?*]', '', filename)
+    filename = re.sub(r'[^a-zA-Z0-9_\- ]', '', filename)
     return filename.strip()
+
+def requests_session():
+    # Create a session to ensure secure and authorized requests
+    session = requests.Session()
+    retries = Retry(
+        total=5,  # Retry up to 5 times for transient errors
+        backoff_factor=0.3,  # Backoff time increases between retries
+        status_forcelist=[500, 502, 503, 504]  # Retry on server errors
+    )
+    session.mount('https://', HTTPAdapter(max_retries=retries))
+    return session
+
+def fetch_notion_data(endpoint, headers):
+    session = requests_session()
+    response = session.get(endpoint, headers=headers)
+    response.raise_for_status()  # Raise an error for bad responses
+    return response.json()
 
 @timing
 def fetch_notion_pages_and_databases():
     pages_and_databases = []
     try:
         logger.info("Starting to fetch top-level pages and databases...")
+        headers = {"Authorization": f"Bearer {os.getenv('NOTION_API_TOKEN')}"}
+        endpoint = "https://api.notion.com/v1/search"
+        notion_data = fetch_notion_data(endpoint, headers)
 
         # Fetch top-level pages
         has_more = True
@@ -231,8 +252,9 @@ def fetch_notion_pages_and_databases():
             next_cursor = response.get('next_cursor')
             logger.info(f"Fetched {len(pages_and_databases)} top-level pages and databases so far...")
 
-    except Exception as e:
-        logger.error(f"Error fetching pages and databases: {e}")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request failed: {e}")
+        raise
 
     logger.info("Finished fetching top-level pages and databases.")
     return pages_and_databases
