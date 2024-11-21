@@ -39,8 +39,6 @@ services:
       - notion-backup:/notion-backup
     ports:
       - "8080:5000"
-    depends_on:
-      - notion-backup
     networks:
       - backup-network
 

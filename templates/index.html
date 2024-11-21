@@ -74,7 +74,7 @@
             <!-- Selected items will be listed here -->
         </ul>
         <button class="side-panel-button" onclick="performAction('download')">Download Selected</button>
-        <button class="side-panel-button" onclick="performAction('delete')">Delete Selected</button>
+        <button class="delete-button side-panel-button" onclick="performAction('delete')">Delete Selected</button>
     </div>
 
     <!-- Loading Spinner -->
@@ -196,8 +196,55 @@
             }
         }
 
-        // Function to download items with progress
+        // Consolidated Function to Download Items
         function downloadItems(paths) {
+            if (paths.length === 1 && !allDirectories.includes(paths[0])) {
+                // Single file download
+                downloadSingleFile(paths[0]);
+            } else {
+                // Multiple files or directories download as ZIP
+                downloadMultipleItems(paths);
+            }
+        }
+
+        // Function to download a single file
+        function downloadSingleFile(path) {
+            showLoading(true);
+            fetch('/download_selected', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ selected_paths: [path] }),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to download the file');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                const filename = path.split('/').pop();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                console.error('Error downloading the file:', error);
+                alert('Failed to download the file.');
+            })
+            .finally(() => {
+                showLoading(false);
+            });
+        }
+
+        // Function to download multiple items as a ZIP with progress
+        function downloadMultipleItems(paths) {
             showLoading(true);
             showProgress(true);
             const progressBar = document.getElementById('progress-bar');
@@ -302,7 +349,7 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ path: paths }), // Update to send array
+                body: JSON.stringify({ path: paths }), // Send array
             })
             .then(response => {
                 if (!response.ok) {
@@ -350,7 +397,10 @@
                         showLoading(false);
                         return;
                     }
-                    allDirectories = data.directories;
+                    allDirectories = data.directories.map(dir => {
+                        // Construct relative path
+                        return path ? `${path}/${dir}`.replace(/\\/g, '/') : dir;
+                    });
                     allFiles = data.files;
                     updateBreadcrumb(data.breadcrumb);
                     applyFilters();
@@ -375,14 +425,15 @@
                     const sidebarList = document.getElementById('sidebar-list');
                     sidebarList.innerHTML = '';
                     data.directories.forEach(directory => {
+                        const fullPath = directory; // Relative path
                         const listItem = document.createElement('li');
                         const link = document.createElement('a');
                         link.href = '#';
-                        link.textContent = directory;
-                        link.setAttribute('data-path', directory);
+                        link.textContent = directory.split('/').pop(); // Display only the directory name
+                        link.setAttribute('data-path', fullPath);
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
-                            const newPath = directory;
+                            const newPath = fullPath;
                             loadDirectory(newPath);
                         });
                         listItem.appendChild(link);
@@ -419,8 +470,8 @@
         // Function to update the file and directory list based on search and sort
         function applyFilters() {
             if (isGlobalSearch && currentSearch.trim() !== '') {
-                // Perform global search
-                performGlobalSearch(currentSearch.trim());
+                // Use the global search results directly without performing another search
+                updateFileList(allDirectories, allFiles);
                 return;
             }
 
@@ -428,7 +479,7 @@
             let filteredFiles = allFiles.filter(file => file.name.toLowerCase().includes(currentSearch.toLowerCase()));
 
             // Sort directories and files separately
-            filteredDirectories = sortArray(filteredDirectories, 'name_asc'); // Directories sorted by name ascending
+            filteredDirectories = sortArray(filteredDirectories, 'name_asc', 'directory'); // Directories sorted by name ascending
             filteredFiles = sortArray(filteredFiles, currentSort, 'file'); // Files sorted based on currentSort
 
             updateFileList(filteredDirectories, filteredFiles);
@@ -485,19 +536,19 @@
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.name = 'selected_paths';
-                checkbox.value = currentPath ? `${currentPath}/${directory}` : directory;
+                checkbox.value = directory; // Use the full relative path
                 checkbox.className = 'file-checkbox';
-                if (selectedItems.has(currentPath ? `${currentPath}/${directory}` : directory)) {
+                if (selectedItems.has(directory)) {
                     checkbox.checked = true;
                 }
 
                 const link = document.createElement('a');
                 link.href = '#';
                 link.className = 'file-link';
-                link.innerHTML = `<i class="bi bi-folder-fill file-icon"></i> ${directory}`;
+                link.innerHTML = `<i class="bi bi-folder-fill file-icon"></i> ${getDirectoryName(directory)}`; // Display only the directory name
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const newPath = currentPath ? `${currentPath}/${directory}` : directory;
+                    const newPath = directory; // Use the full path directly
                     loadDirectory(newPath);
                 });
 
@@ -543,6 +594,12 @@
                 listItem.appendChild(details);
                 fileList.appendChild(listItem);
             });
+        }
+
+        // Helper Function to Extract Directory Name from Path
+        function getDirectoryName(path) {
+            const parts = path.split('/');
+            return parts[parts.length - 1];
         }
 
         // Function to format file size
@@ -691,100 +748,6 @@
                     const progressBar = document.getElementById('progress-bar');
                     progressBar.classList.remove('indeterminate');
                 });
-        }
-
-        // Function to download items with progress (updated)
-        function downloadItems(paths) {
-            showLoading(true);
-            showProgress(true);
-            const progressBar = document.getElementById('progress-bar');
-            const progressText = document.getElementById('progress-text');
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
-            progressBar.classList.remove('indeterminate');
-
-            fetch('/download_selected', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ selected_paths: paths }),
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(data => { throw data; });
-                }
-
-                const contentLength = response.headers.get('Content-Length');
-                if (contentLength) {
-                    const total = parseInt(contentLength, 10);
-                    let loaded = 0;
-
-                    return new Response(
-                        new ReadableStream({
-                            start(controller) {
-                                const reader = response.body.getReader();
-                                function read() {
-                                    reader.read().then(({ done, value }) => {
-                                        if (done) {
-                                            controller.close();
-                                            return;
-                                        }
-                                        loaded += value.byteLength;
-                                        const percent = ((loaded / total) * 100).toFixed(2);
-                                        progressBar.style.width = `${percent}%`;
-                                        progressText.textContent = `${percent}%`;
-                                        controller.enqueue(value);
-                                        read();
-                                    }).catch(error => {
-                                        console.error('Error reading stream:', error);
-                                        controller.error(error);
-                                    });
-                                }
-                                read();
-                            }
-                        })
-                    );
-                } else {
-                    // If Content-Length is not provided, show an indeterminate progress bar
-                    progressBar.classList.add('indeterminate');
-                    progressText.textContent = 'Downloading...';
-                    return response.blob();
-                }
-            })
-            .then(response => {
-                if (response instanceof Blob) {
-                    const disposition = response.headers ? response.headers.get('Content-Disposition') : null;
-                    let filename = 'download.zip';
-                    if (disposition && disposition.indexOf('filename=') !== -1) {
-                        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
-                        const matches = filenameRegex.exec(disposition);
-                        if (matches != null && matches[1]) { 
-                            filename = matches[1].replace(/['"]/g, '');
-                        }
-                    }
-                    const url = window.URL.createObjectURL(response);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    window.URL.revokeObjectURL(url);
-                    alert('Download completed successfully.');
-                }
-            })
-            .catch(error => {
-                console.error('Error downloading selected items:', error);
-                alert(error.error || 'An error occurred while downloading the selected items.');
-            })
-            .finally(() => {
-                showLoading(false);
-                showProgress(false);
-                // Remove indeterminate class if present
-                const progressBar = document.getElementById('progress-bar');
-                progressBar.classList.remove('indeterminate');
-            });
         }
 
         // Function to upload files

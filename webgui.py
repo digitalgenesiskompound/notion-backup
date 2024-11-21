@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BACKUP_DIR = "/notion-backup"
-BASE_BACKUP_DIR = os.path.join(BACKUP_DIR, 'backup')  # Define base backup directory
+BASE_BACKUP_DIR = os.path.join(BACKUP_DIR, 'backup')
 
 USERNAME = "username"  # Replace with actual logic to obtain username if needed.
 
@@ -25,7 +25,9 @@ UPLOAD_EXTENSIONS = set(['.txt', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.docx
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB limit per file
 
 def secure_path(path):
-    # Ensure the path is secure and within BASE_BACKUP_DIR
+    """
+    Ensure the path is secure and within BASE_BACKUP_DIR.
+    """
     abs_path = os.path.abspath(os.path.join(BASE_BACKUP_DIR, path))
     if not abs_path.startswith(os.path.abspath(BASE_BACKUP_DIR)):
         logger.warning(f"Attempted access to forbidden path: {path}")
@@ -58,7 +60,7 @@ def list_directory():
                     'name': item,
                     'size': stat.st_size,
                     'lastModified': int(stat.st_mtime),  # Unix timestamp in seconds
-                    'path': os.path.relpath(item_path, BASE_BACKUP_DIR)
+                    'path': os.path.relpath(item_path, BASE_BACKUP_DIR).replace("\\", "/")  # Ensure consistent path separators
                 })
 
         directories.sort()
@@ -72,7 +74,7 @@ def list_directory():
             breadcrumb.append({'name': 'Root', 'path': ''})
             for part in parts:
                 accumulated_path = os.path.join(accumulated_path, part)
-                breadcrumb.append({'name': part, 'path': accumulated_path})
+                breadcrumb.append({'name': part, 'path': accumulated_path.replace("\\", "/")})
         else:
             breadcrumb.append({'name': 'Root', 'path': ''})
 
@@ -101,14 +103,14 @@ def search():
         # Check directories
         for dir in dirs:
             if query in dir.lower():
-                relative_path = os.path.relpath(os.path.join(root, dir), BASE_BACKUP_DIR)
+                relative_path = os.path.relpath(os.path.join(root, dir), BASE_BACKUP_DIR).replace("\\", "/")
                 matched_directories.append(relative_path)
 
         # Check files
         for file in files:
             if query in file.lower():
                 file_path = os.path.join(root, file)
-                relative_path = os.path.relpath(file_path, BASE_BACKUP_DIR)
+                relative_path = os.path.relpath(file_path, BASE_BACKUP_DIR).replace("\\", "/")
                 stat = os.stat(file_path)
                 matched_files.append({
                     'name': file,
@@ -216,7 +218,6 @@ def delete_item():
         logger.exception(f"Error deleting items: {e}")
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/download_all')
 def download_all():
     try:
@@ -233,7 +234,7 @@ def download_all():
                 for file in files:
                     file_path = os.path.join(root, file)
                     # Add the file to the zip, preserving its relative path
-                    relative_path = os.path.relpath(file_path, BASE_BACKUP_DIR)
+                    relative_path = os.path.relpath(file_path, BASE_BACKUP_DIR).replace("\\", "/")
                     zip_file.write(file_path, relative_path)
                     logger.debug(f"Added to ZIP: {relative_path}")
 
@@ -273,7 +274,7 @@ def download_selected():
         # If only one file or directory is selected, handle accordingly
         if len(absolute_paths) == 1:
             selected_path = absolute_paths[0]
-            relative_path = os.path.relpath(selected_path, BASE_BACKUP_DIR)
+            relative_path = os.path.relpath(selected_path, BASE_BACKUP_DIR).replace("\\", "/")
 
             if os.path.isfile(selected_path):
                 # Serve the single file
@@ -291,7 +292,7 @@ def download_selected():
                         for file in files:
                             file_path = os.path.join(root, file)
                             # Preserve the directory structure in the zip
-                            relative_file_path = os.path.relpath(file_path, BASE_BACKUP_DIR)
+                            relative_file_path = os.path.relpath(file_path, BASE_BACKUP_DIR).replace("\\", "/")
                             zip_file.write(file_path, relative_file_path)
                             logger.debug(f"Added to ZIP: {relative_file_path}")
                 zip_buffer.seek(0)
@@ -314,7 +315,7 @@ def download_selected():
             for selected_path in absolute_paths:
                 if os.path.isfile(selected_path):
                     # Add the file to the zip
-                    relative_path = os.path.relpath(selected_path, BASE_BACKUP_DIR)
+                    relative_path = os.path.relpath(selected_path, BASE_BACKUP_DIR).replace("\\", "/")
                     zip_file.write(selected_path, relative_path)
                     logger.debug(f"Added to ZIP: {relative_path}")
                 elif os.path.isdir(selected_path):
@@ -322,7 +323,7 @@ def download_selected():
                     for root, dirs, files in os.walk(selected_path):
                         for file in files:
                             file_path = os.path.join(root, file)
-                            relative_path = os.path.relpath(file_path, BASE_BACKUP_DIR)
+                            relative_path = os.path.relpath(file_path, BASE_BACKUP_DIR).replace("\\", "/")
                             zip_file.write(file_path, relative_path)
                             logger.debug(f"Added to ZIP: {relative_path}")
 

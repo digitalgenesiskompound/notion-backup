@@ -422,6 +422,29 @@ h1 {
     animation: spin 1s linear infinite;
 }
 
+/* Style for Delete Buttons */
+.delete-button {
+    background-color: #e74c3c; /* Vibrant red */
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-weight: bold;
+    transition: background-color 0.3s ease;
+}
+
+/* Hover effect for Delete Buttons */
+.delete-button:hover {
+    background-color: #c0392b; /* Darker red on hover */
+}
+
+/* Optional: Adjust spacing for buttons in action menu and side panel */
+.actions-menu-content button,
+.selected-items-panel .side-panel-button {
+    margin: 5px 0;
+}
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
