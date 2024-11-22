@@ -1,3 +1,5 @@
+# webgui.py
+
 import logging
 from flask import Flask, send_file, send_from_directory, abort, render_template, request, Response, jsonify
 from flask_cors import CORS
@@ -21,7 +23,7 @@ BASE_BACKUP_DIR = os.path.join(BACKUP_DIR, 'backup')
 USERNAME = "username"  # Replace with actual logic to obtain username if needed.
 
 # Configure upload parameters
-UPLOAD_EXTENSIONS = set(['.txt', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.docx', '.xlsx', '.pptx', '.zip'])  # Define allowed extensions
+UPLOAD_EXTENSIONS = set(['.txt', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.docx', '.xlsx', '.pptx', '.zip', '.bat', '.md', '.py', '.js', '.css', '.html', '.yaml', '.yml'])  # Define allowed extensions
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB limit per file
 
 def secure_path(path):
@@ -230,13 +232,19 @@ def download_all():
         # Create a zip file in-memory
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for root, _, files in os.walk(BASE_BACKUP_DIR):
+            for root, dirs, files in os.walk(BASE_BACKUP_DIR):
+                # Add directories (including empty ones)
+                for dir in dirs:
+                    dir_path = os.path.join(root, dir)
+                    relative_dir_path = os.path.relpath(dir_path, BASE_BACKUP_DIR).replace("\\", "/") + '/'
+                    zip_file.writestr(relative_dir_path, '')  # Add directory entry
+
+                # Add files
                 for file in files:
                     file_path = os.path.join(root, file)
-                    # Add the file to the zip, preserving its relative path
-                    relative_path = os.path.relpath(file_path, BASE_BACKUP_DIR).replace("\\", "/")
-                    zip_file.write(file_path, relative_path)
-                    logger.debug(f"Added to ZIP: {relative_path}")
+                    relative_file_path = os.path.relpath(file_path, BASE_BACKUP_DIR).replace("\\", "/")
+                    zip_file.write(file_path, relative_file_path)
+                    logger.debug(f"Added to ZIP: {relative_file_path}")
 
         # Set the pointer to the start of the BytesIO buffer
         zip_buffer.seek(0)
@@ -344,6 +352,53 @@ def download_selected():
     except Exception as e:
         logger.exception(f"Error creating ZIP for selected items: {e}")
         return jsonify({'error': f"An error occurred while creating ZIP: {str(e)}"}), 500
+
+@app.route('/api/get_file_content', methods=['GET'])
+def get_file_content():
+    try:
+        path = request.args.get('path', '')
+        if not path:
+            return jsonify({'error': 'No file path provided.'}), 400
+
+        secure_file_path = secure_path(path)
+
+        if not os.path.isfile(secure_file_path):
+            return jsonify({'error': 'The specified path is not a file.'}), 400
+
+        with open(secure_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        return jsonify({'content': content}), 200
+
+    except Exception as e:
+        logger.exception(f"Error fetching file content for {path}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save_file_content', methods=['POST'])
+def save_file_content():
+    try:
+        data = request.get_json()
+        path = data.get('path', '')
+        content = data.get('content', '')
+
+        if not path:
+            return jsonify({'error': 'No file path provided.'}), 400
+
+        secure_file_path = secure_path(path)
+
+        if not os.path.isfile(secure_file_path):
+            return jsonify({'error': 'The specified path is not a file.'}), 400
+
+        # Write the new content to the file
+        with open(secure_file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+
+        logger.info(f"File saved: {secure_file_path}")
+        return jsonify({'message': 'File saved successfully.'}), 200
+
+    except Exception as e:
+        logger.exception(f"Error saving file content for {path}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # Route to serve static files
 @app.route('/static/<path:filename>')
