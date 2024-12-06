@@ -1,5 +1,7 @@
 # Notion Backup Tool
 
+I do this as a hobby from the information that I have learned in school. If you would like, you can buy me a [**coffee**](https://www.paypal.com/donate/?hosted_button_id=KNKHSKAL4YWVJ) 🍵.
+
 ### Features
 
 - Export pages, databases, images, files and pdf's from your Notion workspace.
