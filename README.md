@@ -1,4 +1,4 @@
-## I have had to stop working on this due to life. It will not receieve any updates for the forseeable future. I will be taking down this repo by the summer if I can't get back to working on it.
+## I have had to stop working on this due to life. It will not receieve any updates for the forseeable future. I will be taking down this repo by summer 2025 if I can't get back to working on it.
 
 # Notion Backup Tool
 
